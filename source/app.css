@@ -1,0 +1,42 @@
+/*
+ * Z-Image Turbo Gradio app custom styles.
+ */
+
+.sidebar {
+    max-width: 48px;
+}
+
+.sidebar img {
+    max-width: unset;
+
+    height: 34px;
+    width: 34px;
+}
+
+/*
+ * Gradio CSS classes are subject to change
+ * in future versions; but since we pinned
+ * a version, this shouldn't be an issue...
+ */
+
+.sidebar .hide-container {
+    display: none;
+}
+
+.gallery-container .caption {
+    padding: 0.1em;
+    font-weight: normal;
+    white-space: break-spaces;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+}
+
+.fullscreen .gallery-container .caption {
+    display: none;
+}
+
+footer .divider {
+    display: none;
+}

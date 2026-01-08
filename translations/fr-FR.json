@@ -1,0 +1,22 @@
+{
+    "Visit project homepage to check updates": "Consultez la page d'accueil du projet pour suivre les mises à jour",
+    "Access the FAQ of this application": "Accédez à la FAQ de cette application",
+    "Keep project developer awake with a coffee": "Maintenez le développeur de ce projet éveillé avec un café",
+    "Enter your prompt here...": "Entrez votre prompt ici...",
+    "Aspect Ratio": "Format",
+    "Square": "Carré",
+    "Landscape": "Paysage",
+    "Ultra Wide": "Ultra large",
+    "Resolution": "Résolution",
+    "Advanced Settings": "Réglages avancés",
+    "Generate Image": "Générer l'image",
+    "Seed": "Graine",
+    "Random": "Aléatoire",
+    "Denoising Steps": "Étapes de débruitage",
+    "Example Prompts": "Exemples de prompts",
+    "Generated Images": "Images générées",
+    "Seed Used": "Graine utilisée",
+    "Source model": "Modèle source",
+    "Image generation may be slow because diffusion pipeline is not optimized.": "La génération d'images risque d'être lente car le pipeline de diffusion n'est pas optimisé.",
+    "Try upgrading your graphics card drivers, then reboot your PC and restart": "Essayez de mettre à jour les pilotes de votre carte graphique, puis redémarrez votre PC et relancez"
+}

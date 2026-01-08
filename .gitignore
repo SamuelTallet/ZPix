@@ -1,0 +1,9 @@
+.ruff_cache
+.venv
+build
+cache
+temp
+vcpkg_installed
+*.dll
+*.exe
+DEBUG*

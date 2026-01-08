@@ -1,0 +1,6 @@
+{
+  "dependencies": [
+    "webview2"
+  ],
+  "builtin-baseline": "e7d511847f12658e9bd196b29b223144e3f2f091"
+}
