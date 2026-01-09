@@ -7,7 +7,7 @@ No watermarks, no limits. Images are computed on your computer.
 
 ## Quick start
 
-1. Download and extract [Z-Image-Turbo-v1.0.0.zip](https://github.com/SamuelTallet/Z-Image-Turbo-Windows/releases/download/v1.0.0/Z-Image-Turbo-v1.0.0.zip)
+1. Download and extract [Z-Image-Turbo-v1.0.1.zip](https://github.com/SamuelTallet/Z-Image-Turbo-Windows/releases/download/v1.0.1/Z-Image-Turbo-v1.0.1.zip)
 2. Run `Z-Image-Turbo.exe`
     - If SmartScreen pops, click on "More info", "Run anyway"
     - If a DLL is missing, install [Visual C++ Redist](https://aka.ms/vc14/vc_redist.x64.exe) and re-run
