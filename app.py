@@ -155,12 +155,12 @@ def get_aspects_and_resolutions():
         ],
         "{} (16:10)".format(t("Landscape")): [
             "1280x800",
-            "1440x904",
+            "1440x912",
             "1920x1200",
         ],
         "{} (10:16)".format(t("Portrait")): [
             "800x1280",
-            "904x1440",
+            "912x1440",
             "1200x1920",
         ],
         "{} (21:9)".format(t("Ultra Wide")): [
