@@ -224,7 +224,11 @@ def load_model(model: str, backup_model: str):
         pipe.text_encoder = apply_sdnq_options_to_model(
             pipe.text_encoder, use_quantized_matmul=True
         )
-        optimized = True
+        try:
+            pipe.transformer.set_attention_backend("sage")
+            optimized = True
+        except Exception as e:
+            logging.warning(f"SageAttention is not available: {e}")
 
     pipe.enable_model_cpu_offload()
 
