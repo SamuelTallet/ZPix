@@ -225,7 +225,7 @@ def load_model(model: str, backup_model: str):
             pipe.text_encoder, use_quantized_matmul=True
         )
         try:
-            pipe.transformer.set_attention_backend("sage")
+            pipe.transformer.set_attention_backend("_sage_qk_int8_pv_fp16_triton")
             optimized = True
         except Exception as e:
             logging.warning(f"SageAttention is not available: {e}")
