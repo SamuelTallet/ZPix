@@ -8,6 +8,7 @@ from os import environ
 from pathlib import Path
 from random import randint
 from re import search
+from shutil import rmtree
 
 import gradio as gr
 from diffusers import ZImagePipeline
@@ -299,13 +300,22 @@ def generate(
     else:
         new_seed = int(seed) if seed != -1 else randint(1, 1000000)
 
-    image = generate_image(
-        pipe=pipe,
-        prompt=prompt,
-        resolution=resolution,
-        seed=new_seed,
-        num_inference_steps=int(steps + 1),
-    )
+    generation_args = {
+        "pipe": pipe,
+        "prompt": prompt,
+        "resolution": resolution,
+        "seed": new_seed,
+        "num_inference_steps": int(steps + 1),
+    }
+    try:
+        image = generate_image(**generation_args)
+    except UnicodeDecodeError:
+        # A corrupted Triton cache can cause an UnicodeDecodeError.
+        rmtree(Path.home() / ".triton", ignore_errors=True)
+        gr.Warning(t("Cleared Triton cache as it may be corrupted."), duration=6)
+
+        gr.Info(t("Regenerating same image..."), duration=8)
+        image = generate_image(**generation_args)
 
     if gallery_images is None:
         gallery_images = []
