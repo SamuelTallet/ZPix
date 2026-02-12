@@ -17,6 +17,8 @@ from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
 from torch import bfloat16, cuda, manual_seed, xpu
 
+from source.py.lora_model import LoraModel
+
 logging.basicConfig(format="%(levelname)s: %(message)s")
 
 # Path to Triton cache directory
@@ -42,6 +44,9 @@ pipe: ZImagePipeline | None = None
 
 optimized: bool = False
 """Pipeline is optimized?"""
+
+pipe_is_busy: bool = False
+"""Pipeline is busy? e.g. loading a LoRA."""
 
 
 def load_translation(locale: str) -> None:
@@ -116,7 +121,7 @@ def on_app_load():
         )
 
 
-def get_aspects_and_resolutions():
+def get_aspects_and_resolutions() -> tuple:
     """Get aspect ratios and resolutions,
     possibly translated.
 
@@ -195,6 +200,48 @@ def parse_resolution(resolution):
     return 1024, 1024
 
 
+def update_trigger_word(trigger_words: list, prompt: str) -> str:
+    """Update the trigger word in the prompt.
+
+    Args:
+        trigger_words: List of [previous, current] trigger words.
+        prompt: The current prompt as a string.
+
+    Returns:
+        Updated prompt.
+    """
+    previous_tw, current_tw = trigger_words
+
+    # Removes the previous trigger word from start of the prompt.
+    if previous_tw and prompt.startswith(previous_tw):
+        prompt = prompt[len(previous_tw) :].lstrip()
+
+    # Adds the current trigger word to start of the prompt.
+    if current_tw:
+        prompt = f"{current_tw} {prompt}"
+
+    return prompt
+
+
+def remove_trigger_word(trigger_words: list, prompt: str) -> tuple:
+    """Remove the current trigger word from the prompt.
+
+    Args:
+        trigger_words: List of [previous, current] trigger words.
+        prompt: The current prompt as a string.
+
+    Returns:
+        Tuple of (empty trigger words list, updated prompt).
+    """
+    _, current_tw = trigger_words
+
+    # Removes the current trigger word from start of the prompt.
+    if current_tw and prompt.startswith(current_tw):
+        prompt = prompt[len(current_tw) :].lstrip()
+
+    return [None, None], prompt
+
+
 def load_model(model: str, backup_model: str):
     """Load and configure the Z-Image pipeline.
 
@@ -234,6 +281,83 @@ def load_model(model: str, backup_model: str):
     pipe.enable_model_cpu_offload()
 
 
+def swap_lora(path: str) -> str | None:
+    """Swap or load a new LoRA model.
+
+    Args:
+        path: Path to a LoRA file.
+
+    Returns:
+        Trigger word of LoRA model.
+    """
+    global pipe_is_busy
+
+    if pipe_is_busy:
+        raise gr.Error(
+            t("Pipeline is busy. Please try again shortly."),
+            duration=4,
+        )
+
+    if not path.endswith(".safetensors"):
+        raise gr.Error(
+            t("LoRA file extension must be .safetensors"),
+            duration=20,
+        )
+
+    lora = LoraModel(path)
+
+    try:
+        if lora.base_model() != "zimage":
+            gr.Warning(
+                f"{t('This LoRA seems incompatible with')} Z-Image.<br>"
+                f"{t('It might not work.')}",
+                duration=5,
+            )
+    except Exception as e:
+        logging.warning(f"Can't check LoRA compatibility: {e}")
+
+    bfloat16_lora = lora.to_bf16()
+    gr.Info(t("Loading LoRA..."), duration=2)
+
+    try:
+        pipe_is_busy = True
+        pipe.unload_lora_weights()
+        pipe.load_lora_weights(bfloat16_lora, adapter_name="lora_1")
+    finally:
+        pipe_is_busy = False
+
+    trigger_word = lora.trigger_word()
+
+    return trigger_word
+
+
+def set_lora_strength(strength: float):
+    """Set LoRA strength."""
+    adapters = pipe.get_list_adapters()
+
+    if "transformer" not in adapters or "lora_1" not in adapters["transformer"]:
+        raise gr.Error("No LoRA loaded.")
+
+    pipe.set_adapters("lora_1", strength)
+
+
+def unload_lora():
+    """Unload LoRA model."""
+    global pipe_is_busy
+
+    if pipe_is_busy:
+        raise gr.Error(
+            t("Pipeline is busy. Please try again shortly."),
+            duration=4,
+        )
+
+    try:
+        pipe_is_busy = True
+        pipe.unload_lora_weights()
+    finally:
+        pipe_is_busy = False
+
+
 def generate_image(
     pipe,
     prompt,
@@ -253,16 +377,21 @@ def generate_image(
     Returns:
         Generated PIL Image.
     """
+    global pipe_is_busy
     width, height = parse_resolution(resolution)
 
-    image = pipe(
-        prompt=prompt,
-        height=height,
-        width=width,
-        num_inference_steps=num_inference_steps,
-        guidance_scale=0.0,
-        generator=manual_seed(seed),
-    ).images[0]
+    try:
+        pipe_is_busy = True
+        image = pipe(
+            prompt=prompt,
+            height=height,
+            width=width,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=0.0,
+            generator=manual_seed(seed),
+        ).images[0]
+    finally:
+        pipe_is_busy = False
 
     return image
 
@@ -289,11 +418,16 @@ def generate(
         Tuple of (updated gallery, last image index, seed as str, seed as int).
 
     Raises:
-        gr.Error: If the pipeline is not loaded.
+        gr.Error: If the pipeline is not loaded or busy.
     """
-
     if pipe is None:
         raise gr.Error("Pipeline not loaded.")
+
+    if pipe_is_busy:
+        raise gr.Error(
+            t("Pipeline is busy. Please try again shortly."),
+            duration=4,
+        )
 
     if random_seed:
         new_seed = randint(1, 1000000)
@@ -356,24 +490,39 @@ if __name__ == "__main__":
                     icon=app_dir / "assets" / "noto-emoji" / "emoji_u26a1.svg",
                     link=get_metadata("HOME_URL"),
                     link_target="_blank",  # Opens default browser. See app.js
-                    elem_id="home-button",
+                    elem_id="home-btn",
                 )
                 gr.HTML(
                     js_on_load=f"""
-                        let btn = document.getElementById("home-button")
+                        let btn = document.getElementById("home-btn")
                         btn.title = "{t("Visit project homepage to check updates")}"
                     """
+                )
+                gr.Button(
+                    "",
+                    icon=app_dir / "assets" / "lora_grad.svg",
+                    elem_id="swap-lora-btn",
+                )
+                gr.HTML(
+                    js_on_load=f"""
+                        let btn = document.getElementById("swap-lora-btn")
+                        btn.title = "{t("Load a LoRA file to apply a new style")}"
+                    """
+                )
+                lora_path = gr.Textbox(
+                    visible="hidden",  # See "portal" in app.js
+                    elem_id="lora-path",
                 )
                 gr.Button(
                     "",
                     icon=app_dir / "assets" / "kerismaker" / "tech_13631866.png",
                     link=f"{get_metadata('HOME_URL')}/blob/main/docs/FAQ.md",
                     link_target="_blank",
-                    elem_id="faq-button",
+                    elem_id="faq-btn",
                 )
                 gr.HTML(
                     js_on_load=f"""
-                        let btn = document.getElementById("faq-button")
+                        let btn = document.getElementById("faq-btn")
                         btn.title = "{t("Access the FAQ of this application")}"
                     """
                 )
@@ -382,21 +531,77 @@ if __name__ == "__main__":
                     icon=app_dir / "assets" / "kofi_symbol.svg",
                     link=get_metadata("DONATE_URL"),
                     link_target="_blank",
-                    elem_id="donate-button",
+                    elem_id="donate-btn",
                 )
                 gr.HTML(
                     js_on_load=f"""
-                        let btn = document.getElementById("donate-button")
+                        let btn = document.getElementById("donate-btn")
                         btn.title = "{t("Keep project developer awake with a coffee")} 😄"
                     """
                 )
 
             with gr.Column():
+                trigger_words = gr.State(value=[None, None])
+                """Trigger words (previous, current)."""
+
                 prompt = gr.Textbox(
                     label=t("Prompt"),
                     lines=3,
                     placeholder=t("Enter your prompt here..."),
-                    html_attributes={"spellcheck": "false"},
+                    html_attributes=gr.InputHTMLAttributes(spellcheck=False),
+                )
+
+                with gr.Row(visible=False) as lora_row:
+                    with gr.Column():
+                        lora_strength = gr.Slider(
+                            label=t("LoRA Strength"),
+                            minimum=-2.5,
+                            maximum=2.5,
+                            step=0.1,
+                            value=1.0,
+                        )
+                        lora_strength.change(
+                            set_lora_strength,
+                            inputs=lora_strength,
+                        )
+                    with gr.Column():
+                        unload_lora_btn = gr.Button(t("Unload LoRA"))
+
+                        # On "Unload LoRA" button click:
+                        # - unload LoRA model,
+                        # - remove trigger word from prompt,
+                        # - empty trigger words history,
+                        # - make LoRA row invisible.
+                        unload_lora_btn.click(
+                            unload_lora,
+                        ).then(
+                            remove_trigger_word,
+                            inputs=[trigger_words, prompt],
+                            outputs=[trigger_words, prompt],
+                        ).then(
+                            lambda: gr.update(visible=False),
+                            outputs=lora_row,
+                        )
+
+                # When a LoRA path is selected:
+                # - discard appended timestamp,
+                # - unload any LoRA model,
+                # - load selected LoRA model,
+                # - shift trigger words history,
+                # - update trigger word in prompt,
+                # - make LoRA row visible.
+                lora_path.change(
+                    lambda p, tw: [tw[1], swap_lora(p)],
+                    inputs=[lora_path, trigger_words],
+                    outputs=trigger_words,
+                    js="(p, tw) => [p.split('|')[0], tw]",
+                ).then(
+                    update_trigger_word,
+                    inputs=[trigger_words, prompt],
+                    outputs=prompt,
+                ).then(
+                    lambda: gr.update(visible=True),
+                    outputs=lora_row,
                 )
 
                 with gr.Row():

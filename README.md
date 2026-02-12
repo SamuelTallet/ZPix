@@ -39,8 +39,8 @@ Please get to [FAQ page](https://github.com/SamuelTallet/Z-Image-Turbo-Windows/b
 Quantized model: [Z-Image-Turbo-SDNQ](https://huggingface.co/Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32) by Disty0.<br>
 Base model: [Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) by Tongyi-MAI.
 
-Python packages: [Torch](https://pytorch.org/), [Triton Windows](https://pypi.org/project/triton-windows/), [SageAttention Windows](https://github.com/woct0rdho/SageAttention/), [Diffusers](https://pypi.org/project/diffusers/), [SDNQ](https://pypi.org/project/sdnq/), and [Gradio](https://pypi.org/project/gradio/).<br>
-Python tools: [uv](https://github.com/astral-sh/uv) and [Ruff](https://github.com/astral-sh/ruff) by Astral.
+Python packages: [Torch](https://pytorch.org/), [Triton Windows](https://pypi.org/project/triton-windows/), [SageAttention Windows](https://github.com/woct0rdho/SageAttention/), [Diffusers](https://pypi.org/project/diffusers/), [PEFT](https://pypi.org/project/peft/), [SDNQ](https://pypi.org/project/sdnq/), and [Gradio](https://pypi.org/project/gradio/).<br>
+Python tools: [uv](https://github.com/astral-sh/uv), [ty](https://github.com/astral-sh/ty) and [Ruff](https://github.com/astral-sh/ruff) by Astral.
 
 C++ libraries: [WebView2](https://learn.microsoft.com/microsoft-edge/webview2/) by Microsoft.<br>
 C++ tools: [CMake](https://cmake.org/) by Kitware, and [vcpkg](https://github.com/microsoft/vcpkg) by Microsoft.

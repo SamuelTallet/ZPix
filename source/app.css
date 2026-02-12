@@ -19,7 +19,8 @@
  * a version, this shouldn't be an issue...
  */
 
-.sidebar .hide-container {
+.sidebar .hide-container,
+.sidebar .form {
     display: none;
 }
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 288" width="256" height="288">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color: #FF00CC" />
+      <stop offset="100%" style="stop-color: #FEB804" />
+    </linearGradient>
+  </defs>
+  <text x="50%" y="50%" font-family="Verdana, sans-serif" font-weight="bold" font-size="164" text-anchor="middle" dominant-baseline="middle" fill="url(#gradient)" stroke="black" stroke-width="5px">
+    <tspan x="60%" dy="-0.35em">Lo</tspan>
+    <tspan x="48%" dy="0.9em">RA</tspan>
+  </text>
+</svg>

@@ -1,8 +1,11 @@
 {
     "Visit project homepage to check updates": "Consultez la page d'accueil du projet pour suivre les mises à jour",
+    "Load a LoRA file to apply a new style": "Chargez un fichier LoRA pour appliquer un nouveau style",
     "Access the FAQ of this application": "Accédez à la FAQ de cette application",
     "Keep project developer awake with a coffee": "Maintenez le développeur de ce projet éveillé avec un café",
     "Enter your prompt here...": "Entrez votre prompt ici...",
+    "LoRA Strength": "Force du LoRA",
+    "Unload LoRA": "Décharger le LoRA",
     "Aspect Ratio": "Format",
     "Square": "Carré",
     "Landscape": "Paysage",
@@ -20,5 +23,11 @@
     "Image generation may be slow because diffusion pipeline is not optimized.": "La génération d'images risque d'être lente car le pipeline de diffusion n'est pas optimisé.",
     "Try upgrading your graphics card drivers, then reboot your PC and restart": "Essayez de mettre à jour les pilotes de votre carte graphique, puis redémarrez votre PC et relancez",
     "Cleared Triton cache as it may be corrupted.": "Le cache de Triton a été vidé car il était peut-être corrompu.",
-    "Regenerating same image...": "Re-génération de la même image..."
+    "Regenerating same image...": "Re-génération de la même image...",
+    "LoRA file extension must be .safetensors": "L'extension du fichier LoRA doit être .safetensors",
+    "Error": "Erreur",
+    "This LoRA seems incompatible with": "Ce LoRA semble incompatible avec",
+    "It might not work.": "Il pourrait ne pas fonctionner.",
+    "Loading LoRA...": "Chargement du LoRA...",
+    "Pipeline is busy. Please try again shortly.": "Le pipeline est occupé. Veuillez réessayer dans un instant."
 }
