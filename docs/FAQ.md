@@ -2,7 +2,7 @@
 
 ## Is it possible to generate images with a custom style or a specific character?
 
-Yes, using LoRA models.
+Yes, using LoRA models:
 
 1. Search for a LoRA model on [CivitAI](https://civitai.com/search/models?baseModel=ZImageTurbo&baseModel=ZImageBase&modelType=LORA&modelType=Checkpoint) for example.
 Ensure LoRA is compatible with Z-Image Turbo or Z-Image Base.
@@ -21,9 +21,9 @@ Things you can do:
 - Generate an image with a different seed.
 - Ensure LoRA is compatible with Z-Image Turbo or Z-Image Base.
 
-## Can I use this application for commercial purposes?
+## Can I use ZPix for commercial purposes?
 
-Yes, in accordance with the [GNU General Public License](https://www.gnu.org/licenses/gpl.html).
+Yes, in accordance with [GNU General Public License 3.0](https://www.gnu.org/licenses/gpl-3.0.html) and [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 
 ## Does this application works offline?
 
@@ -31,11 +31,11 @@ Once model is downloaded, yes.
 
 ## I got an error without details, how to know more?
 
-1. Close application
-2. Create a file named `DEBUG` next to `Z-Image-Turbo.exe`
-3. Restart application; notice that a console stays open in background
-4. Repeat actions that previously triggered this error
-5. Look at console output
+1. Close application.
+2. Create a file named `DEBUG` next to `ZPix.exe`.
+3. Restart application; notice that a console stays open in background.
+4. Repeat actions that previously triggered this error.
+5. Look at console output.
 
 ## How to uninstall this application?
 
