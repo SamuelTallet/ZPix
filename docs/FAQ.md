@@ -1,5 +1,26 @@
 # ZPix FAQ
 
+## Is it possible to generate images with a custom style or a specific character?
+
+Yes, using LoRA models.
+
+1. Search for a LoRA model on [CivitAI](https://civitai.com/search/models?baseModel=ZImageTurbo&baseModel=ZImageBase&modelType=LORA&modelType=Checkpoint) for example.
+Ensure LoRA is compatible with Z-Image Turbo or Z-Image Base.
+2. Download the LoRA.
+3. Back to ZPix, click on "LoRA" button in sidebar.
+4. Select downloaded LoRA file (extension is *.safetensors*).
+5. Generate a new image.
+
+Note you don't need to restart ZPix to unload or load a new LoRA.
+
+## LoRA has loaded but has no effect...
+
+Things you can do:
+
+- Return to LoRA source page, authors often give usage tips (e.g. a lower LoRA strength, a trigger word) and prompts examples.
+- Generate an image with a different seed.
+- Ensure LoRA is compatible with Z-Image Turbo or Z-Image Base.
+
 ## Can I use this application for commercial purposes?
 
 Yes, in accordance with the [GNU General Public License](https://www.gnu.org/licenses/gpl.html).
