@@ -27,15 +27,6 @@ Yes, in accordance with [GNU General Public License 3.0](https://www.gnu.org/lic
 
 Once model is downloaded, yes.
 
-## How to erase prompts history?
-
-1. In Windows File Explorer address bar, paste then confirm this path:
-```
-%USERPROFILE%\.zpix
-```
-2. Remove `prompts_history.sqlite` file.
-3. Restart ZPix if it was open.
-
 ## I got an error without details, how to know more?
 
 1. Close application.

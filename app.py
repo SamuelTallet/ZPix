@@ -22,13 +22,6 @@ from sdnq.loader import apply_sdnq_options_to_model
 
 from source.py.disclaimer import TERMS_OF_USE, TermsOfUse
 from source.py.ex_prompts import get_example_prompts
-from source.py.gen_history import (
-    SEARCHABLE_PROMPTS,
-    add_prompt_to_history_frame,
-    get_prompts_history,
-    insert_prompt_in_history_db,
-    on_prompts_history_row_select,
-)
 from source.py.image_model import ImageModel
 from source.py.image_models import download_model, find_model, get_models
 from source.py.lora_model import LoraModel
@@ -88,9 +81,6 @@ try:
 except Exception:
     logging.warning("Can't get user pictures path, using default.")
     output_dir = Path.home() / "Pictures" / "ZPix"
-
-prompts_history_db = Path.home() / ".zpix" / "prompts_history.sqlite"
-"""Path to prompts history SQLite database."""
 
 
 def load_translation(locale: str) -> None:
@@ -850,43 +840,7 @@ if __name__ == "__main__":
                     show_progress="hidden",
                 )
 
-                try:
-                    prompts_history = get_prompts_history(prompts_history_db)
-                except Exception as e:
-                    logging.warning(f"Can't get prompts history: {e}")
-                    # Prompts history isn't essential, let's continue without.
-                    prompts_history = []
-
-                prompts_history_frame = gr.DataFrame(
-                    visible=True if prompts_history else "hidden",
-                    label=t("Previous Prompts"),
-                    value=prompts_history,
-                    type="array",
-                    interactive=False,
-                    max_height=300,
-                    show_search="search",
-                    elem_id="prompts-history",
-                )
-                prompts_history_frame.select(
-                    on_prompts_history_row_select,
-                    outputs=mm_prompt,
-                    show_progress="hidden",
-                )
-                prompts_history_search_title = t("among last {number} prompts").format(
-                    number=SEARCHABLE_PROMPTS
-                )
-                gr.HTML(
-                    visible="hidden",
-                    js_on_load=f"""
-                        let input = document.querySelector("#prompts-history .search-input")
-                        input.placeholder = "{t("Search...")}"
-                        input.title = "{prompts_history_search_title}"
-                        input.spellcheck = false
-                    """,
-                )
-
                 examples = gr.Examples(
-                    visible=not prompts_history,  # Onboarding-like.
                     examples=get_example_prompts(
                         app_dir / "data" / "example_prompts.json"
                     ),
@@ -1006,13 +960,6 @@ if __name__ == "__main__":
             lambda idx: gr.update(selected_index=idx),
             inputs=last_image_index,
             outputs=gallery_images,
-        ).then(
-            add_prompt_to_history_frame,
-            inputs=[mm_prompt, prompts_history_frame],
-            outputs=[prompts_history_frame],
-        ).then(
-            lambda p: insert_prompt_in_history_db(p, prompts_history_db),
-            inputs=mm_prompt,
         )
 
         app.load(on_app_load)

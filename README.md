@@ -42,7 +42,6 @@ Hotswap LoRAs. Drag reference images directly from output gallery, which is alwa
 ### Prompt recall
 
 - Extract prompt from image², dragged from output gallery or anywhere.
-- Search and reuse previous prompts (stored in a local database).
 
 ### Custom styles
 

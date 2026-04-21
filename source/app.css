@@ -124,23 +124,6 @@
     outline: none;
 }
 
-#prompts-history .table-wrap {
-    mask-image: linear-gradient(to bottom, white 70%, transparent);
-}
-
-#prompts-history .table {
-    font-family: var(--font);
-    overflow: hidden; /* Hide scrollbars */
-}
-
-#prompts-history thead {
-    display: none;
-}
-
-#prompts-history tbody * {
-    cursor: pointer;
-}
-
 footer .divider {
     display: none;
 }
