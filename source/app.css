@@ -87,13 +87,20 @@
     object-fit: contain;
 }
 
-#examples p {
+#example-prompts p {
     font-size: var(--text-md);
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
+}
+
+#used-prompt textarea {
+    background: transparent;
+    padding: .7em 0 0;
+    mask-image: linear-gradient(to bottom, white 70%, transparent);
+    overflow-y: hidden !important;
 }
 
 #gallery {
