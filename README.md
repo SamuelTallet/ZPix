@@ -24,24 +24,25 @@ Hotswap LoRAs. Drag reference images directly from output gallery, which is alwa
 
 ### One-click install
 
-- ZPix setups Python environment and packages for you.
+ZPix setups Python environment and packages for you.
 
 ### Lazy download
 
-- Models are progressively¹ downloaded from Hugging Face.
+Models are progressively¹ downloaded from Hugging Face.
 
 ### Text-to-Image
 
-- Create image from prompt.
+Create image from prompt.
 
 ### Image-to-Image
 
 - Add or drag reference images from output gallery or anywhere.
 - Edit image based on prompt and optional reference images.
 
-### Prompt recall
+### Prompts history
 
 - Extract prompt from image², dragged from output gallery or anywhere.
+- Reuse or copy used prompt in one click with dedicated buttons.
 
 ### Custom styles
 
@@ -50,11 +51,11 @@ Hotswap LoRAs. Drag reference images directly from output gallery, which is alwa
 
 ### Eleven ratios
 
-- 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 16:10, 10:16, 21:9, 9:20
+1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 16:10, 10:16, 21:9, 9:20
 
 ### Seed control
 
-- Specify a seed value for reproducibility or leave it random.
+Specify a seed value for reproducibility or leave it random.
 
 #### Remarks
 
