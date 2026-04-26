@@ -96,6 +96,22 @@
     overflow: hidden;
 }
 
+#used-prompt .custom-button { /* Reuse button */
+    height: stretch;
+    background-image: url("/gradio_api/file=assets/cycle_for_light.svg");
+    background-repeat: no-repeat;
+    background-position: center;
+    bottom: 0.5px;
+}
+
+.dark #used-prompt .custom-button {
+    background-image: url("/gradio_api/file=assets/cycle_for_dark.svg");
+}
+
+#used-prompt .custom-button-label {
+    display: none;
+}
+
 #used-prompt textarea {
     background: transparent;
     padding: .7em 0 0;

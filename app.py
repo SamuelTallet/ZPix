@@ -853,13 +853,23 @@ if __name__ == "__main__":
                         elem_id="example-prompts",
                     )
 
-                used_prompt = gr.Textbox(
-                    visible="hidden",
-                    label=t("Used Prompt"),
-                    max_lines=4,
-                    buttons=["copy"],
-                    interactive=False,
-                    elem_id="used-prompt",
+                reuse_prompt_btn = gr.Button(value=t("Reuse"))
+
+                with gr.Row():
+                    used_prompt = gr.Textbox(
+                        visible="hidden",
+                        label=t("Used Prompt"),
+                        max_lines=4,
+                        buttons=["copy", reuse_prompt_btn],
+                        interactive=False,
+                        elem_id="used-prompt",
+                    )
+
+                reuse_prompt_btn.click(
+                    lambda p: gr.update(value=p),
+                    inputs=used_prompt,
+                    outputs=mm_prompt,
+                    show_progress="hidden",
                 )
 
                 used_prompts = gr.State(value=[])
