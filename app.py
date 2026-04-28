@@ -9,6 +9,7 @@ from pathlib import Path
 from random import randint
 from shutil import rmtree
 from time import time
+from typing import cast
 
 import gradio as gr
 import torch
@@ -322,7 +323,7 @@ def generate(
         gallery_images: Existing gallery images to append to.
         lora_name: Name of loaded LoRA (e.g. "Anime_20").
     Returns:
-        Tuple of (updated gallery, last image index, used prompt, used seed).
+        Tuple of (updated gallery, last image index, used seed).
 
     Raises:
         gr.Error: If the pipeline is not loaded or busy.
@@ -407,11 +408,10 @@ def generate(
     if gallery_images is None:
         gallery_images = []
 
-    # Model is added as image caption.
-    caption = f"{t('Used model:')} {model.name}"
-    gallery_images.append((image_file, caption))
+    # Prompt is added as image caption.
+    gallery_images.append((image_file, prompt))
 
-    return gallery_images, len(gallery_images) - 1, prompt, used_seed
+    return gallery_images, len(gallery_images) - 1, used_seed
 
 
 if __name__ == "__main__":
@@ -567,9 +567,6 @@ if __name__ == "__main__":
                         outputs=mm_prompt,
                         show_progress="hidden",
                     )
-
-                    last_used_prompt = gr.State(value="")
-                    """Last used prompt, appended to used prompts on generation success."""
 
                 with gr.Row():
                     reference_images = gr.MultimodalTextbox(
@@ -872,9 +869,6 @@ if __name__ == "__main__":
                     show_progress="hidden",
                 )
 
-                used_prompts = gr.State(value=[])
-                """Used prompts, indexed by gallery image index."""
-
             with gr.Column(scale=2):
                 gallery_images = gr.Gallery(
                     label=t("Generated Images"),
@@ -887,18 +881,16 @@ if __name__ == "__main__":
                 )
                 last_image_index = gr.State(value=None)
 
-                def update_used_prompt(
-                    gallery_image: gr.SelectData, used_prompts: list[str]
-                ) -> dict:
-                    # Gallery indexes and used prompts indexes are in sync
-                    # since both are incremented on generation success.
-                    prompt = used_prompts[gallery_image.index]
+                def update_used_prompt(gallery_image: gr.SelectData) -> dict:
+                    """Update "Used Prompt" component value and visibility
+                    according to image selected in gallery."""
+
+                    prompt = cast(str, gallery_image.value["caption"])
                     # If prompt is empty, it's useless to show this component.
                     return gr.update(value=prompt, visible=bool(prompt))
 
                 gallery_images.select(
                     update_used_prompt,
-                    inputs=used_prompts,
                     outputs=used_prompt,
                     show_progress="hidden",
                 )
@@ -992,22 +984,17 @@ if __name__ == "__main__":
                 gallery_images,
                 lora_name,
             ],
-            outputs=[gallery_images, last_image_index, last_used_prompt, seed],
+            outputs=[gallery_images, last_image_index, seed],
             show_progress_on=gallery_images,
         )
 
         # On generation success:
         # - release model dropdown,
-        # - append used prompt to used prompts history,
         # - select generated image in gallery,
         # - make example prompts invisible.
         generation.success(
             lambda: gr.update(interactive=True),
             outputs=model_select,
-        ).then(
-            lambda p, ups: ups + [p],
-            inputs=[last_used_prompt, used_prompts],
-            outputs=used_prompts,
         ).then(
             lambda idx: gr.update(selected_index=idx),  # See gallery_images.select
             inputs=last_image_index,
