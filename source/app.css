@@ -96,12 +96,15 @@
     overflow: hidden;
 }
 
+#used-prompt .icon-button-wrapper {
+    padding: 4px;
+}
+
 #used-prompt .custom-button { /* Reuse button */
     height: stretch;
     background-image: url("/gradio_api/file=assets/cycle_for_light.svg");
     background-repeat: no-repeat;
     background-position: center;
-    bottom: 0.5px;
 }
 
 .dark #used-prompt .custom-button {
