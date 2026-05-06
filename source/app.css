@@ -8,11 +8,6 @@
     user-select: none;
 }
 
-.align-right {
-    width: fit-content;
-    margin-left: auto;
-}
-
 #tou-row {
     position: fixed;
     inset: 0;
@@ -148,6 +143,16 @@
 
 #gallery .thumbnail-item:focus-visible {
     outline: none;
+}
+
+#delete-output-image-btn {
+    max-width: 33%;
+    margin-right: auto;
+}
+
+#open-output-folder-btn {
+    max-width: 33%;
+    margin-left: auto;
 }
 
 footer .divider {

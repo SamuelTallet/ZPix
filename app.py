@@ -8,8 +8,7 @@ from os import environ
 from pathlib import Path
 from random import randint
 from shutil import rmtree
-from time import time
-from typing import cast
+from time import time_ns
 
 import gradio as gr
 import torch
@@ -23,6 +22,7 @@ from sdnq.loader import apply_sdnq_options_to_model
 
 from source.py.disclaimer import TERMS_OF_USE, TermsOfUse
 from source.py.ex_prompts import get_example_prompts
+from source.py.gallery_images import delete_image
 from source.py.image_model import ImageModel
 from source.py.image_models import download_model, find_model, get_models
 from source.py.lora_model import LoraModel
@@ -30,6 +30,7 @@ from source.py.os_abstract import open_with_default_app
 from source.py.prompt_extract import extract_update_prompt
 from source.py.resolutions import get_aspects_and_resolutions, parse_resolution
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
+from source.py.used_prompt import sync_used_prompt
 
 logging.basicConfig(format="%(levelname)s: %(message)s")
 
@@ -301,19 +302,20 @@ def generate(
     model: ImageModel,
     mm_prompt: dict | None,
     reference_images: dict | None,
-    resolution="1024x1024",
-    seed=42,
-    random_seed=True,
-    steps=8,
-    cfg=0.0,
-    gallery_images=None,
-    lora_name: str | None = None,
-):
+    resolution: str,
+    seed: int,
+    random_seed: bool,
+    steps: int,
+    cfg: float,
+    gallery_images: list[tuple] | None,
+    images_paths: dict[str, str],
+    lora_name: str | None,
+) -> tuple[list[tuple], int, dict[str, str], int]:
     """Generate an image and possibly a seed, and update gallery.
 
     Args:
         model: Loaded image model.
-        mm_prompt: Multimodal dictionary containing the prompt.
+        mm_prompt: Multimodal dictionary containing possibly a text prompt.
         reference_images: List of reference images.
         resolution: Resolution string (e.g. "1024x1024").
         seed: Seed value for reproducibility.
@@ -321,9 +323,10 @@ def generate(
         steps: Number of inference (denoising) steps.
         cfg: Classifier-free guidance scale.
         gallery_images: Existing gallery images to append to.
+        images_paths: Dictionary mapping images IDs to output paths.
         lora_name: Name of loaded LoRA (e.g. "Anime_20").
     Returns:
-        Tuple of (updated gallery, last image index, used seed).
+        Tuple of (updated gallery, last image index, output paths, used seed).
 
     Raises:
         gr.Error: If the pipeline is not loaded or busy.
@@ -392,7 +395,9 @@ def generate(
     image_metadata.add_text("steps", str(steps))
     image_metadata.add_text("cfg", str(cfg))
 
-    image_basename = f"image_{time():.0f}.png"
+    # Milliseconds precision is more than enough to avoid filename collision.
+    image_id = str(time_ns() // 1_000_000)
+    image_basename = f"image_{image_id}.png"
 
     # LoRA name (if provided) is included in output path.
     if lora_name:
@@ -405,13 +410,16 @@ def generate(
 
     image.save(image_file, pnginfo=image_metadata)
 
+    # Output path is recorded for a possible later deletion.
+    images_paths[image_id] = str(image_file)
+
     if gallery_images is None:
         gallery_images = []
 
     # Prompt is added as image caption.
     gallery_images.append((image_file, prompt))
 
-    return gallery_images, len(gallery_images) - 1, used_seed
+    return gallery_images, len(gallery_images) - 1, images_paths, used_seed
 
 
 if __name__ == "__main__":
@@ -879,18 +887,20 @@ if __name__ == "__main__":
                     interactive=False,
                     elem_id="gallery",
                 )
-                last_image_index = gr.State(value=None)
+                output_images_paths = gr.State(value={})
+                """Output images paths indexed by image ID."""
 
-                def update_used_prompt(gallery_image: gr.SelectData) -> dict:
-                    """Update "Used Prompt" component value and visibility
-                    according to image selected in gallery."""
+                selected_image_index = gr.State(value=None)
+                """Index of image to select or selected in gallery."""
 
-                    prompt = cast(str, gallery_image.value["caption"])
-                    # If prompt is empty, it's useless to show this component.
-                    return gr.update(value=prompt, visible=bool(prompt))
+                def get_selected_image_index(gallery_image: gr.SelectData) -> int:
+                    return gallery_image.index
 
                 gallery_images.select(
-                    update_used_prompt,
+                    get_selected_image_index, outputs=selected_image_index
+                ).success(
+                    sync_used_prompt,
+                    inputs=[gallery_images, selected_image_index],
                     outputs=used_prompt,
                     show_progress="hidden",
                 )
@@ -898,30 +908,68 @@ if __name__ == "__main__":
                 # Prevent grid display.
                 gallery_images.preview_close(
                     lambda idx: gr.update(selected_index=idx),
-                    inputs=last_image_index,
+                    inputs=selected_image_index,
                     outputs=gallery_images,
                     show_progress="hidden",
                 )
 
-                open_output_folder_btn = gr.Button(
-                    t("Open Output Folder"),
-                    variant="primary",
-                    elem_id="open-output-folder-btn",
-                    elem_classes=["align-right"],
-                )
-                gr.HTML(
-                    visible="hidden",
-                    js_on_load=f"""
-                        let btn = document.getElementById("open-output-folder-btn")
-                        btn.title = "{t("of generated images")}"
-                    """,
-                )
+                with gr.Row():
+                    delete_output_image_btn = gr.Button(
+                        t("Delete Image"),
+                        visible="hidden",
+                        elem_id="delete-output-image-btn",
+                    )
+                    gr.HTML(
+                        visible="hidden",
+                        js_on_load=f"""
+                            const btn = document.getElementById("delete-output-image-btn")
+                            btn.title = "{t("file included")}"
+                        """,
+                    )
 
-                def create_open_output_dir():
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    open_with_default_app(output_dir)
+                    delete_output_image_btn.click(
+                        delete_image,
+                        inputs=[
+                            gallery_images,
+                            selected_image_index,
+                            output_images_paths,
+                        ],
+                        outputs=[
+                            gallery_images,
+                            selected_image_index,
+                            output_images_paths,
+                        ],
+                    ).success(
+                        sync_used_prompt,
+                        inputs=[gallery_images, selected_image_index],
+                        outputs=used_prompt,
+                        show_progress="hidden",
+                    )
 
-                open_output_folder_btn.click(create_open_output_dir)
+                    gallery_images.change(
+                        lambda images: gr.update(visible=bool(images)),
+                        inputs=gallery_images,
+                        outputs=delete_output_image_btn,
+                    )
+
+                    open_output_folder_btn = gr.Button(
+                        t("Open Output Folder"),
+                        variant="primary",
+                        elem_id="open-output-folder-btn",
+                    )
+                    gr.HTML(
+                        visible="hidden",
+                        js_on_load=f"""
+                            const btn = document.getElementById("open-output-folder-btn")
+                            btn.title = "{t("of generated images")}"
+                        """,
+                    )
+
+                    def create_open_output_dir():
+                        output_dir.mkdir(parents=True, exist_ok=True)
+                        open_with_default_app(output_dir)
+
+                    open_output_folder_btn.click(create_open_output_dir)
 
         with gr.Row():
             # Add a credits link to footer, after Gradio credit.
@@ -967,9 +1015,12 @@ if __name__ == "__main__":
             show_progress="hidden",
         )
 
+        # Before generation starts:
+        # - lock model dropdown,
+        # - hide "Delete Image" button (it's shown later, see gallery_images.change).
         generation = generate_btn.click(
-            lambda: gr.update(interactive=False),
-            outputs=model_select,
+            lambda: (gr.update(interactive=False), gr.update(visible=False)),
+            outputs=[model_select, delete_output_image_btn],
         ).then(
             generate,
             inputs=[
@@ -982,22 +1033,28 @@ if __name__ == "__main__":
                 steps,
                 cfg,
                 gallery_images,
+                output_images_paths,
                 lora_name,
             ],
-            outputs=[gallery_images, last_image_index, seed],
+            outputs=[
+                gallery_images,
+                selected_image_index,
+                output_images_paths,
+                seed,
+            ],
             show_progress_on=gallery_images,
         )
 
         # On generation success:
         # - release model dropdown,
-        # - select generated image in gallery,
+        # - select (preview) generated image in gallery,
         # - make example prompts invisible.
         generation.success(
             lambda: gr.update(interactive=True),
             outputs=model_select,
         ).then(
             lambda idx: gr.update(selected_index=idx),  # See gallery_images.select
-            inputs=last_image_index,
+            inputs=selected_image_index,
             outputs=gallery_images,
         ).then(
             lambda: gr.update(visible=False),
