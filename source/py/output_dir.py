@@ -1,0 +1,59 @@
+"""Output directory management."""
+
+from collections.abc import Callable
+from logging import warning
+from pathlib import Path
+
+import gradio as gr
+from crossfiledialog import choose_folder
+from platformdirs import user_pictures_path
+
+
+def _output_dir_cfg() -> Path:
+    """Path to config file storing output directory set by user."""
+    return Path.home() / ".zpix" / "output_dir.cfg"
+
+
+def get_output_dir() -> Path:
+    """Get output directory, in this order:
+    - Custom directory possibly set by user
+    - User pictures directory defined at OS level
+    - "Pictures" directory in user profile
+    """
+    try:
+        output_dir_cfg = _output_dir_cfg()
+
+        if output_dir_cfg.exists():
+            output_dir = Path(
+                output_dir_cfg.read_text(encoding="utf-8"),
+            )
+        else:
+            output_dir = user_pictures_path() / "ZPix"
+
+    except Exception as error:
+        warning(f"We'll use default output directory because: {error}")
+        output_dir = Path.home() / "Pictures" / "ZPix"
+
+    return output_dir
+
+
+def change_output_dir(t: Callable[[str], str]):
+    """Prompt user to select an output directory
+    then write it in a file, later read by get_output_dir().
+
+    Args:
+        t: Translation function.
+    """
+    selected_dir: str | None = choose_folder(title=t("for generated images"))
+
+    if not selected_dir:
+        return
+
+    output_dir_cfg = _output_dir_cfg()
+    output_dir_cfg.write_text(selected_dir, encoding="utf-8")
+
+    gr.Info(
+        t("New output folder will take effect at next ZPix start."),
+        # As it seems allowed_paths can't be changed after Gradio launch.
+        duration=None,
+    )

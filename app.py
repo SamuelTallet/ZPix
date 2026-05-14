@@ -15,7 +15,6 @@ import torch
 from diffusers import Flux2KleinPipeline, ZImagePipeline
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
-from platformdirs import user_pictures_path
 from sdnq import SDNQConfig  # noqa: F401
 from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
@@ -27,6 +26,7 @@ from source.py.image_model import ImageModel
 from source.py.image_models import download_model, find_model, get_models
 from source.py.lora_model import LoraModel
 from source.py.os_abstract import open_with_default_app
+from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
 from source.py.resolutions import get_aspects_and_resolutions, parse_resolution
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
@@ -75,14 +75,8 @@ pipe_is_optimized: bool = False
 pipe_is_busy: bool = False
 """Pipeline is busy? e.g. loading a LoRA."""
 
-output_dir: Path
+output_dir = get_output_dir()
 """The folder where ZPix saves generated images."""
-
-try:
-    output_dir = user_pictures_path() / "ZPix"
-except Exception:
-    logging.warning("Can't get user pictures path, using default.")
-    output_dir = Path.home() / "Pictures" / "ZPix"
 
 
 def load_translation(locale: str) -> None:
@@ -459,7 +453,7 @@ if __name__ == "__main__":
                 )
                 gr.HTML(
                     js_on_load=f"""
-                        let btn = document.getElementById("visit-home-btn")
+                        const btn = document.getElementById("visit-home-btn")
                         btn.title = "{t("Visit project homepage to check updates")}"
                     """
                 )
@@ -474,7 +468,7 @@ if __name__ == "__main__":
                 )
                 gr.HTML(
                     js_on_load=f"""
-                        let btn = document.getElementById("swap-lora-btn")
+                        const btn = document.getElementById("swap-lora-btn")
                         btn.title = "{t("Load a LoRA file to apply a new style")}"
                     """
                 )
@@ -487,24 +481,39 @@ if __name__ == "__main__":
 
                 show_seed_btn = gr.Button(
                     "",
-                    icon=assets_dir / "juicy-fish" / "dice.png",
+                    icon=assets_dir / "juicy-fish" / "dice.svg",
                     elem_id="show-seed-btn",
                 )
                 gr.HTML(
                     js_on_load=f"""
-                        let btn = document.getElementById("show-seed-btn")
+                        const btn = document.getElementById("show-seed-btn")
                         btn.title = "{t("Use a specific or random seed")}"
                     """
                 )
 
+                change_out_folder_btn = gr.Button(
+                    "",
+                    icon=assets_dir / "freepik" / "folder.svg",
+                    elem_id="change-output-folder-btn",
+                )
+                gr.HTML(
+                    js_on_load=f"""
+                        const btn = document.getElementById("change-output-folder-btn")
+                        btn.title = "{t("Change output folder")}"
+                    """
+                )
+                change_out_folder_btn.click(
+                    lambda: change_output_dir(t),
+                )
+
                 access_faq_btn = gr.Button(
                     "",
-                    icon=assets_dir / "kerismaker" / "tech_13631866.png",
+                    icon=assets_dir / "kerismaker" / "tech_13631866.svg",
                     elem_id="access-faq-btn",
                 )
                 gr.HTML(
                     js_on_load=f"""
-                        let btn = document.getElementById("access-faq-btn")
+                        const btn = document.getElementById("access-faq-btn")
                         btn.title = "{t("Access the FAQ of this application")}"
                     """
                 )
@@ -521,7 +530,7 @@ if __name__ == "__main__":
                 )
                 gr.HTML(
                     js_on_load=f"""
-                        let btn = document.getElementById("donate-btn")
+                        const btn = document.getElementById("donate-btn")
                         btn.title = "{t("Keep project developer awake with a coffee")} 😄"
                     """
                 )

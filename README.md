@@ -79,20 +79,30 @@ Please get to [FAQ page](https://github.com/SamuelTallet/ZPix/blob/main/docs/FAQ
 ## Credits
 
 Quantized models:
-- [Z-Image-Turbo-SDNQ-uint4-svd-r32](https://huggingface.co/Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32) by Disty0.
-- [FLUX.2-klein-4B-SDNQ-4bit-dynamic](https://huggingface.co/Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic) by Disty0.
+- [Z-Image-Turbo-SDNQ-uint4-svd-r32](https://huggingface.co/Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32) by Disty0
+- [FLUX.2-klein-4B-SDNQ-4bit-dynamic](https://huggingface.co/Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic) by Disty0
 
 Base models:
-- [Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) by Tongyi-MAI.
-- [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) by Black Forest Labs.
+- [Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) by Tongyi-MAI
+- [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) by Black Forest Labs
 
-Python packages: [Torch](https://pytorch.org/), [Triton Windows](https://pypi.org/project/triton-windows/), [FlashAttention Prebuild Wheels](https://github.com/mjun0812/flash-attention-prebuild-wheels), [Diffusers](https://pypi.org/project/diffusers/), [PEFT](https://pypi.org/project/peft/), [SDNQ](https://pypi.org/project/sdnq/), [PlatformDirs](https://pypi.org/project/platformdirs/), and [Gradio](https://pypi.org/project/gradio/).<br>
+Python packages:
+- [Torch](https://pytorch.org/)
+- [Triton Windows](https://pypi.org/project/triton-windows/)
+- [FlashAttention Prebuild Wheels](https://github.com/mjun0812/flash-attention-prebuild-wheels)
+- [Diffusers](https://pypi.org/project/diffusers/)
+- [PEFT](https://pypi.org/project/peft/)
+- [SDNQ](https://pypi.org/project/sdnq/)
+- [PlatformDirs](https://pypi.org/project/platformdirs/)
+- [CrossFileDialog](https://pypi.org/project/crossfiledialog) and [Python for Win32](https://pypi.org/project/pywin32)
+- [Gradio](https://pypi.org/project/gradio/)
+
 Python tools: [uv](https://github.com/astral-sh/uv), [ty](https://github.com/astral-sh/ty) and [Ruff](https://github.com/astral-sh/ruff) by Astral.
 
 C++ libraries: [WebView2](https://learn.microsoft.com/microsoft-edge/webview2/) by Microsoft.<br>
 C++ tools: [CMake](https://cmake.org/) by Kitware, and [vcpkg](https://github.com/microsoft/vcpkg) by Microsoft.
 
-Icons: [High voltage](https://github.com/googlefonts/noto-emoji/blob/main/svg/emoji_u26a1.svg) by Google, [Dice](https://www.flaticon.com/free-icon/dice_1714307) by Juicy Fish, [FAQ](https://www.freepik.com/icon/technology_13631866) by Kerismaker, and [Refresh](https://lucide.dev/icons/refresh-ccw) by Lucide.
+Icons: [High voltage](https://github.com/googlefonts/noto-emoji/blob/main/svg/emoji_u26a1.svg) by Google, [Dice](https://www.flaticon.com/free-icon/dice_1714307) by Juicy Fish, [Folder](https://www.flaticon.com/free-icon/folder_2577144) by Freepik, [FAQ](https://www.freepik.com/icon/technology_13631866) by Kerismaker, and [Refresh](https://lucide.dev/icons/refresh-ccw) by Lucide.
 
 Reference image: [A Woman Posing in a Field of Yellow Flowers](https://www.pexels.com/photo/a-woman-posing-in-a-field-of-yellow-flowers-16465981/) by Josh Hild.
 
