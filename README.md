@@ -102,7 +102,7 @@ Python tools: [uv](https://github.com/astral-sh/uv), [ty](https://github.com/ast
 C++ libraries: [WebView2](https://learn.microsoft.com/microsoft-edge/webview2/) by Microsoft.<br>
 C++ tools: [CMake](https://cmake.org/) by Kitware, and [vcpkg](https://github.com/microsoft/vcpkg) by Microsoft.
 
-Icons: [High voltage](https://github.com/googlefonts/noto-emoji/blob/main/svg/emoji_u26a1.svg) by Google, [Dice](https://www.flaticon.com/free-icon/dice_1714307) by Juicy Fish, [Folder](https://www.flaticon.com/free-icon/folder_2577144) by Freepik, [FAQ](https://www.freepik.com/icon/technology_13631866) by Kerismaker, and [Refresh](https://lucide.dev/icons/refresh-ccw) by Lucide.
+Icons: [Dice](https://www.flaticon.com/free-icon/dice_1714307) by Juicy Fish, [Folder](https://www.flaticon.com/free-icon/folder_2577144) by Freepik, [FAQ](https://www.freepik.com/icon/technology_13631866) by Kerismaker, and [Refresh](https://lucide.dev/icons/refresh-ccw) by Lucide.
 
 Reference image: [A Woman Posing in a Field of Yellow Flowers](https://www.pexels.com/photo/a-woman-posing-in-a-field-of-yellow-flowers-16465981/) by Josh Hild.
 

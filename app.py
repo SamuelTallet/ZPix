@@ -446,21 +446,6 @@ if __name__ == "__main__":
 
         with gr.Row(elem_classes=[] if tou.accepted() else ["blurred"]) as ui_row:
             with gr.Column(min_width=48, elem_classes=["sidebar"]):
-                visit_home_btn = gr.Button(
-                    "",
-                    icon=assets_dir / "noto-emoji" / "emoji_u26a1.svg",
-                    elem_id="visit-home-btn",
-                )
-                gr.HTML(
-                    js_on_load=f"""
-                        const btn = document.getElementById("visit-home-btn")
-                        btn.title = "{t("Visit project homepage to check updates")}"
-                    """
-                )
-                visit_home_btn.click(
-                    lambda: open_with_default_app(get_metadata("HOME_URL")),
-                )
-
                 gr.Button(
                     "",
                     icon=assets_dir / "lora_grad.svg",
