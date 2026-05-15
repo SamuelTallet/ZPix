@@ -549,7 +549,7 @@ if __name__ == "__main__":
                     mm_prompt = gr.MultimodalTextbox(
                         label=t("Prompt"),
                         lines=3,
-                        max_plain_text_length=3000,
+                        max_plain_text_length=4096,
                         placeholder=t("Enter your prompt here..."),
                         html_attributes=gr.InputHTMLAttributes(spellcheck=False),
                         file_types=["image"],
