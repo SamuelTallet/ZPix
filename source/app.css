@@ -155,6 +155,10 @@
     margin-left: auto;
 }
 
+footer a:hover {
+    color: var(--body-text-color);
+}
+
 footer .divider {
     display: none;
 }
