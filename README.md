@@ -49,9 +49,9 @@ Create image from prompt.
 - Load LoRA safetensors on-the-fly; change LoRA strength.
 - LoRA trigger words are auto-inserted, if found in LoRA metadata.
 
-### Eleven ratios
+### Thirteen ratios
 
-1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 16:10, 10:16, 21:9, 9:20
+1:1, 16:9, 9:16, 4:3, 3:4, 5:4, 4:5, 3:2, 2:3, 16:10, 10:16, 21:9, 9:20
 
 ### Seed control
 
