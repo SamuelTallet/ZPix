@@ -19,6 +19,13 @@ Things you can do:
 - Generate an image with a different seed.
 - Ensure LoRA is compatible with image model currently loaded.
 
+## How can I upgrade to latest version?
+
+1. Close ZPix.
+2. Remove folder containing `ZPix.exe`.
+3. Download [latest](https://github.com/SamuelTallet/ZPix/releases/latest) `ZPix.zip` and extract it to any location.
+4. Run `ZPix.exe` from that location.
+
 ## Can I use ZPix for commercial purposes?
 
 Yes, in accordance with [GNU General Public License 3.0](https://www.gnu.org/licenses/gpl-3.0.html) and [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
