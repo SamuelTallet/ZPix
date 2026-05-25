@@ -1,0 +1,63 @@
+/*
+ * Pac-Man loader derived from
+ * https://cssloaders.github.io
+ */
+
+.pac-loader {
+    --man-color: #fecc00;
+    --gum-color: #ffb8ae;
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+    width: 1em;
+    height: 1em;
+    border-radius: 50%;
+    background: conic-gradient(from 45deg, var(--man-color) 0deg 90deg, var(--man-color) 90deg);
+    animation: pac-man-eat 1s linear infinite;
+}
+
+.pac-loader::before,
+.pac-loader::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--gum-color);
+    width: .3em;
+    height: .3em;
+    border-radius: 50%;
+    box-sizing: border-box;
+    opacity: 0;
+    animation: pac-gum-move 2s linear infinite;
+}
+
+.pac-loader::before {
+    animation-delay: 1s;
+}
+
+@keyframes pac-man-eat {
+    0%,
+    49% {
+        background: conic-gradient(from 45deg, var(--man-color) 0deg 90deg, var(--man-color) 90deg);
+    }
+    50%,
+    100% {
+        background: conic-gradient(from 45deg, #0000 0deg 90deg, var(--man-color) 90deg);
+    }
+}
+
+@keyframes pac-gum-move {
+    0% {
+        left: 2.3em;
+        opacity: 1;
+    }
+    50% {
+        left: .8em;
+        opacity: 1;
+    }
+    52%,
+    100% {
+        left: .7em;
+        opacity: 0;
+    }
+}

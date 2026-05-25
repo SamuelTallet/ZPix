@@ -540,7 +540,10 @@ if __name__ == "__main__":
                             select.title = "{t("To edit photos, select [klein] 4B")}"
                         """,
                     )
-                    model_status = gr.HTML(t("Model loaded"))
+                    model_status = gr.HTML(
+                        t("Model loaded"),
+                        elem_id="model-status",
+                    )
 
                 trigger_words = gr.State(value=[None, None])
                 """Trigger words (previous, current)."""
@@ -811,7 +814,12 @@ if __name__ == "__main__":
 
                 # On model download success: load model...
                 model_load = model_download.success(
-                    lambda: gr.update(value=t("Loading...")),
+                    lambda: gr.update(
+                        value=f"""
+                            <span class='text'>{t("Loading")}</span>
+                            <span class='pac-loader'/>
+                        """
+                    ),
                     outputs=model_status,
                     show_progress="hidden",
                 ).then(
@@ -1067,7 +1075,10 @@ if __name__ == "__main__":
         server_port=args.port,
         footer_links=["gradio"],  # Credit
         theme=get_theme(),
-        css_paths=[app_dir / "source" / "app.css"],
+        css_paths=[
+            app_dir / "source" / "css" / "pac-loader.css",
+            app_dir / "source" / "css" / "app.css",
+        ],
         js=(app_dir / "source" / "app.js").read_text(),
         allowed_paths=[output_dir],
     )

@@ -16,6 +16,10 @@
     z-index: 1000;
 }
 
+#model-status .pac-loader {
+    margin-left: .5em;
+}
+
 /*
  * Gradio CSS classes and variables are subject to
  * change in future versions; but since we pinned
@@ -28,6 +32,10 @@
     background: var(--block-background-fill);
     border-radius: 5px;
     text-align: center;
+}
+
+.dark .pac-loader {
+    --gum-color: #fff;
 }
 
 .sidebar {

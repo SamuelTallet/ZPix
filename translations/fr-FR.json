@@ -15,7 +15,7 @@
     "Can't download backup model {id}.": "Impossible de télécharger le modèle de secours {id}.",
     "Can't download model {id}, no backup available.": "Impossible de télécharger le modèle {id}, aucun modèle de secours disponible.",
     "Fallback to": "Repli sur",
-    "Loading...": "Chargement...",
+    "Loading": "Chargement",
     "Enter your prompt here...": "Entrez votre prompt ici...",
     "Used Prompt": "Prompt utilisé",
     "Drag an image here to recover its prompt": "Faites glisser une image ici pour retrouver son prompt",
