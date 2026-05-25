@@ -94,7 +94,7 @@ Python packages:
 - [PEFT](https://pypi.org/project/peft/)
 - [SDNQ](https://pypi.org/project/sdnq/)
 - [PlatformDirs](https://pypi.org/project/platformdirs/)
-- [CrossFileDialog](https://pypi.org/project/crossfiledialog) and [Python for Win32](https://pypi.org/project/pywin32)
+- [CrossFileDialog](https://pypi.org/project/crossfiledialog/)
 - [Gradio](https://pypi.org/project/gradio/)
 
 Python tools: [uv](https://github.com/astral-sh/uv), [ty](https://github.com/astral-sh/ty) and [Ruff](https://github.com/astral-sh/ruff) by Astral.
