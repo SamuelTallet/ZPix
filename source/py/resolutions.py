@@ -80,6 +80,10 @@ def get_aspects_and_resolutions() -> tuple:
             "720x1600",
             "864x1920",
         ],
+        "2:1": [
+            "1536x768",
+            "2048x1024",
+        ],
     }
 
     default_resolution_choices = resolutions_by_aspect[default_aspect_ratio]
