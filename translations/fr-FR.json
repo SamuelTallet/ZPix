@@ -46,6 +46,7 @@
     "I agree": "Je suis d'accord",
     "Image generation may be slow because diffusion pipeline is not optimized.": "La génération d'images risque d'être lente car le pipeline de diffusion n'est pas optimisé.",
     "Try upgrading your graphics card drivers, then reboot your PC and restart": "Essayez de mettre à jour les pilotes de votre carte graphique, puis redémarrez votre PC et relancez",
+    "A new ZPix version is available! Check out what's new and download it <a href='{url}'>here</a>.": "Une nouvelle version de ZPix est disponible ! Découvrez ses nouveautés et téléchargez-la <a href='{url}'>ici</a>.",
     "Reference images were ignored. Please select another model, such as [klein] 4B, to account them.": "Les images de référence ont été ignorées. Veuillez sélectionner un autre modèle, tel que [klein] 4B, pour les prendre en compte.",
     "Cleared Triton cache as it may be corrupted.": "Le cache de Triton a été vidé car il était peut-être corrompu.",
     "Regenerating same image...": "Re-génération de la même image...",

@@ -30,6 +30,7 @@ from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
 from source.py.resolutions import get_aspects_and_resolutions, parse_resolution
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
+from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
 
 logging.basicConfig(format="%(levelname)s: %(message)s")
@@ -139,6 +140,13 @@ def on_app_load():
             + f" {get_metadata('NAME')}.",
             duration=None,  # Until user closes it.
         )
+
+    check_for_updates(
+        get_metadata("VERSION"),
+        get_metadata("VERSION_URL"),
+        f"{get_metadata('HOME_URL')}/releases",
+        t,
+    )
 
 
 def load_model(model: ImageModel) -> ImageModel:
