@@ -52,6 +52,7 @@ def change_output_dir(t: Callable[[str], str]):
         return
 
     output_dir_cfg = _output_dir_cfg()
+    output_dir_cfg.parent.mkdir(parents=True, exist_ok=True)
     output_dir_cfg.write_text(selected_dir, encoding="utf-8")
 
     gr.Info(
