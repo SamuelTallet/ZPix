@@ -1,13 +1,13 @@
 # ZPix
 
-<img src="https://raw.githubusercontent.com/SamuelTallet/ZPix/refs/heads/main/docs/screens/ZPix-v1.0.5.webp">
+<img src="https://raw.githubusercontent.com/SamuelTallet/ZPix/refs/heads/main/docs/screens/ZPix-v1.0.6.webp">
 
 Generate and edit images easily, for free, using solely the power of your GPU. 
 Hotswap LoRAs. Drag reference images directly from output gallery, which is always visible. Everything is made for your comfort. See [all features](#features).
 
 ## Quick start
 
-1. Download and extract [ZPix-v1.0.5.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.5/ZPix-v1.0.5.zip)
+1. Download and extract [ZPix-v1.0.6.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.6/ZPix-v1.0.6.zip)
 2. Run `ZPix.exe`
     - If SmartScreen pops, click on "More info", "Run anyway"
     - If a DLL is missing, install [Visual C++ Redist](https://aka.ms/vc14/vc_redist.x64.exe) and re-run
