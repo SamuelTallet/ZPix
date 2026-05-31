@@ -937,7 +937,12 @@ if __name__ == "__main__":
                         """,
                     )
 
-                    delete_output_image_btn.click(
+                    # Rapid clicks can cause desync with gallery.
+                    # To prevent this, we disable the button during image deletion.
+                    image_deletion = delete_output_image_btn.click(
+                        lambda: gr.update(interactive=False),
+                        outputs=delete_output_image_btn,
+                    ).then(
                         delete_image,
                         inputs=[
                             gallery_images,
@@ -949,11 +954,18 @@ if __name__ == "__main__":
                             selected_image_index,
                             output_images_paths,
                         ],
-                    ).success(
+                    )
+
+                    image_deletion.success(
                         sync_used_prompt,
                         inputs=[gallery_images, selected_image_index],
                         outputs=used_prompt,
                         show_progress="hidden",
+                    )
+
+                    image_deletion.then(
+                        lambda: gr.update(interactive=True),
+                        outputs=delete_output_image_btn,
                     )
 
                     gallery_images.change(
