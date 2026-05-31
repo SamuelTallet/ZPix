@@ -108,7 +108,7 @@ Reference image: [A Woman Posing in a Field of Yellow Flowers](https://www.pexel
 
 ## Thanks
 
-Thanks to M1000, TGS and Nomis for beta testing this program.
+Thanks to M1000, JDD, Design8400, TGS and Nomis for beta testing this program.
 
 ## License
 
