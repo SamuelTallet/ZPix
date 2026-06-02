@@ -42,7 +42,7 @@ Create image from prompt.
 ### Prompts history
 
 - Extract prompt from image², dragged from output gallery or anywhere.
-- Reuse or copy used prompt in one click with dedicated buttons.
+- Reuse or copy prompt of displayed image with dedicated buttons.
 
 ### Custom styles
 
