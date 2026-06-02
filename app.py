@@ -874,7 +874,7 @@ if __name__ == "__main__":
                     used_prompt = gr.Textbox(
                         visible="hidden",
                         label=t("Displayed Image Prompt"),
-                        max_lines=4,
+                        max_lines=6,
                         buttons=["copy", reuse_prompt_btn],
                         interactive=False,
                         elem_id="used-prompt",
