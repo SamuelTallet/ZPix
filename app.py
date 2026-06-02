@@ -1039,10 +1039,19 @@ if __name__ == "__main__":
 
         # Before generation starts:
         # - lock model dropdown,
+        # - hide "Used Prompt" a.k.a "Displayed Image Prompt" block,
         # - hide "Delete Image" button (it's shown later, see gallery_images.change).
         generation = generate_btn.click(
-            lambda: (gr.update(interactive=False), gr.update(visible=False)),
-            outputs=[model_select, delete_output_image_btn],
+            lambda: (
+                gr.update(interactive=False),
+                gr.update(visible=False),
+                gr.update(visible=False),
+            ),
+            outputs=[
+                model_select,
+                used_prompt,
+                delete_output_image_btn,
+            ],
         ).then(
             generate,
             inputs=[
