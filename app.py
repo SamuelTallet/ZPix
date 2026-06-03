@@ -352,14 +352,11 @@ def generate(
     width, height = parse_resolution(resolution)
     used_seed = randint(1, 1000000) if random_seed else int(seed)
 
-    # Z-Image Turbo requires one extra step. Cf. Official HF demo.
-    real_steps = int(steps) + (1 if model.codename == "ZiT" else 0)
-
     pipe_kwargs = {
         "prompt": prompt,
         "height": height,
         "width": width,
-        "num_inference_steps": real_steps,
+        "num_inference_steps": int(steps),
         "guidance_scale": float(cfg),
         "generator": torch.manual_seed(used_seed),
     }

@@ -29,11 +29,6 @@ class ImageModel(BaseModel):
     Example: Z-Image Turbo
     """
 
-    codename: str | None
-    """Model codename.
-    Example: ZiT
-    """
-
     family: str
     """Family of this model.
     Example: Z-Image

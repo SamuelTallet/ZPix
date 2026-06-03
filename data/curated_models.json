@@ -3,7 +3,6 @@
         "id": "Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32",
         "backup_id": "SamuelTallet/Z-Image-Turbo-SDNQ-uint4-svd-r32",
         "name": "Z-Image Turbo",
-        "codename": "ZiT",
         "family": "Z-Image",
         "pipeline": "ZImagePipeline",
         "default": {
@@ -17,7 +16,6 @@
         "id": "Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
         "backup_id": "SamuelTallet/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
         "name": "FLUX.2 [klein] 4B",
-        "codename": null,
         "family": "FLUX.2 [klein]",
         "pipeline": "Flux2KleinPipeline",
         "default": {
