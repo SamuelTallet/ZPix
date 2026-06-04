@@ -12,7 +12,8 @@ from time import time_ns
 
 import gradio as gr
 import torch
-from diffusers import Flux2KleinPipeline, ZImagePipeline
+from diffusers import ComponentsManager, ModularPipeline
+from diffusers.guiders import ClassifierFreeGuidance
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 from sdnq import SDNQConfig  # noqa: F401
@@ -67,7 +68,7 @@ metadata: dict[str, str] = {}
 models: list[ImageModel] = []
 """Available image models."""
 
-pipe: ZImagePipeline | Flux2KleinPipeline | None = None
+pipe: ModularPipeline | None = None
 """Pipeline."""
 
 pipe_is_optimized: bool = False
@@ -154,28 +155,25 @@ def load_model(model: ImageModel) -> ImageModel:
     global pipe
     global pipe_is_optimized
 
-    match model.pipeline:
-        case "ZImagePipeline":
-            pipe_class = ZImagePipeline
-        case "Flux2KleinPipeline":
-            pipe_class = Flux2KleinPipeline
-        case _:
-            raise ValueError(f"Unsupported pipeline class: {model.pipeline}")
+    # A fresh manager per load avoids accumulating components across model swaps.
+    manager = ComponentsManager()
 
     try:
-        pipe = pipe_class.from_pretrained(
+        pipe = ModularPipeline.from_pretrained(
             model.id,
-            torch_dtype=torch.bfloat16,
+            components_manager=manager,
         )
+        pipe.load_components(torch_dtype=torch.bfloat16)
     except Exception:
         if model.backup_id:
             logging.warning(
                 f"Can't load {model.id}, falling back to {model.backup_id}."
             )
-            pipe = pipe_class.from_pretrained(
+            pipe = ModularPipeline.from_pretrained(
                 model.backup_id,
-                torch_dtype=torch.bfloat16,
+                components_manager=manager,
             )
+            pipe.load_components(torch_dtype=torch.bfloat16)
         else:
             raise
 
@@ -187,15 +185,23 @@ def load_model(model: ImageModel) -> ImageModel:
         pipe.text_encoder = apply_sdnq_options_to_model(
             pipe.text_encoder, use_quantized_matmul=True
         )
-        try:
-            pipe.transformer.set_attention_backend("flash")
-            pipe_is_optimized = True
-        except Exception as e:
-            pipe.transformer.reset_attention_backend()
-            logging.warning(f"FlashAttention is not available: {e}")
+        # Not all models are compatible with FlashAttention:
+        if model.family in ("Z-Image", "FLUX.2"):
+            try:
+                pipe.transformer.set_attention_backend("flash")
+                pipe_is_optimized = True
+            except Exception as e:
+                pipe.transformer.reset_attention_backend()
+                logging.warning(f"FlashAttention is not available: {e}")
+        else:
+            pipe.transformer.set_attention_backend("native")
 
-    pipe.vae.to(memory_format=torch.channels_last)
-    pipe.enable_model_cpu_offload()
+    try:
+        pipe.vae.to(memory_format=torch.channels_last)
+    except RuntimeError as e:
+        logging.warning(f"Can't apply memory format optimization: {e}")
+
+    manager.enable_auto_cpu_offload()
 
     return model
 
@@ -240,7 +246,7 @@ def swap_lora(path: str, image_model: ImageModel) -> str | None:
     try:
         if lora.base_model() not in image_model.base_ids:
             gr.Warning(
-                f"{t('This LoRA seems incompatible with')} {image_model.family}.<br>"
+                f"{t('This LoRA seems incompatible with')} {image_model.name}.<br>"
                 f"{t('It might not work.')}",
                 duration=5,
             )
@@ -250,7 +256,7 @@ def swap_lora(path: str, image_model: ImageModel) -> str | None:
     bfloat16_lora = lora.to_bf16()
 
     # Workaround: Diffusers FLUX.2 LoRA converter doesn't handle .alpha keys.
-    if isinstance(pipe, Flux2KleinPipeline):
+    if image_model.family == "FLUX.2":
         bfloat16_lora = {
             k: v for k, v in bfloat16_lora.items() if not k.endswith(".alpha")
         }
@@ -352,12 +358,18 @@ def generate(
     width, height = parse_resolution(resolution)
     used_seed = randint(1, 1000000) if random_seed else int(seed)
 
+    if "guider" in pipe.component_names:
+        pipe.update_components(
+            # Clamp CFG to >= 1.0: below 1.0 the guider pulls predictions toward
+            # the unconditional, weakening prompt adherence (ignored at 0.0).
+            guider=ClassifierFreeGuidance(guidance_scale=max(float(cfg), 1.0))
+        )
+
     pipe_kwargs = {
         "prompt": prompt,
         "height": height,
         "width": width,
         "num_inference_steps": int(steps),
-        "guidance_scale": float(cfg),
         "generator": torch.manual_seed(used_seed),
     }
 

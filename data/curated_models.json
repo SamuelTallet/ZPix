@@ -4,7 +4,6 @@
         "backup_id": "SamuelTallet/Z-Image-Turbo-SDNQ-uint4-svd-r32",
         "name": "Z-Image Turbo",
         "family": "Z-Image",
-        "pipeline": "ZImagePipeline",
         "default": {
             "steps": 8,
             "cfg": 0.0
@@ -16,13 +15,24 @@
         "id": "Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
         "backup_id": "SamuelTallet/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
         "name": "FLUX.2 [klein] 4B",
-        "family": "FLUX.2 [klein]",
-        "pipeline": "Flux2KleinPipeline",
+        "family": "FLUX.2",
         "default": {
             "steps": 4,
             "cfg": 1.0
         },
         "base_ids": ["flux2_klein_4b"],
         "features": ["text-to-image", "image-to-image"]
+    },
+    {
+        "id": "OzzyGT/Anima-base-v1.0_sdnq_dynamic_8bit",
+        "backup_id": null,
+        "name": "Anima Base 1.0",
+        "family": "Anima",
+        "default": {
+            "steps": 30,
+            "cfg": 4.0
+        },
+        "base_ids": ["anima"],
+        "features": ["text-to-image"]
     }
 ]

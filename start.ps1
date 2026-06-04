@@ -86,11 +86,12 @@ if ($gpu.Vendor -eq "NVIDIA") {
     try {
         Write-Host "Trying optimized setup for your NVIDIA GPU..."
         Install-Torch -Version "2.10.0+cu130" -IndexUrl "cu130" -Uv $Uv
+        Install-TorchVision -Version "0.25.0+cu130" -IndexUrl "cu130" -Uv $Uv
         Install-Package -Id "triton-windows" -Version "3.6.0.post26" -Uv $Uv
         Install-Archive -Source "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.7.13/flash_attn-2.8.3+cu130torch2.10-cp313-cp313-win_amd64.whl" -Uv $Uv
         Install-Archive -Source "diffusers @ https://github.com/huggingface/diffusers/archive/f34de4330ee0d7b931aaf77b4176886e74cf797f.zip" -Uv $Uv
         Install-Package -Id "peft" -Version "0.18.1" -Uv $Uv
-        Install-Package -Id "sdnq" -Version "0.1.6" -Uv $Uv
+        Install-Package -Id "sdnq" -Version "0.1.9" -Uv $Uv
         Install-Package -Id "platformdirs" -Version "4.9.4" -Uv $Uv
         Install-Package -Id "crossfiledialog" -Version "1.3.1" -Uv $Uv
         Install-Package -Id "gradio" -Version "6.10.0" -Uv $Uv
@@ -110,9 +111,10 @@ else {
     New-VirtualEnv -Python "3.13.11" -Uv $uv
     Write-Host "Trying default setup..."
     Install-Torch -Version "2.10.0" -Backend "auto" -Uv $Uv
+    Install-TorchVision -Version "0.25.0" -Backend "auto" -Uv $Uv
     Install-Archive -Source "diffusers @ https://github.com/huggingface/diffusers/archive/f34de4330ee0d7b931aaf77b4176886e74cf797f.zip" -Uv $Uv
     Install-Package -Id "peft" -Version "0.18.1" -Uv $Uv
-    Install-Package -Id "sdnq" -Version "0.1.6" -Uv $Uv
+    Install-Package -Id "sdnq" -Version "0.1.9" -Uv $Uv
     Install-Package -Id "platformdirs" -Version "4.9.4" -Uv $Uv
     Install-Package -Id "crossfiledialog" -Version "1.3.1" -Uv $Uv
     Install-Package -Id "gradio" -Version "6.10.0" -Uv $Uv

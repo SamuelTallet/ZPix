@@ -34,9 +34,6 @@ class ImageModel(BaseModel):
     Example: Z-Image
     """
 
-    pipeline: str
-    """Diffusers pipeline class of this model."""
-
     default: Settings
     """Default settings of this model."""
 
