@@ -380,17 +380,12 @@ def generate(
         "generator": torch.manual_seed(used_seed),
     }
 
-    if reference_images and reference_images.get("files"):
-        if "image-to-image" in model.features:
-            images = [Image.open(f) for f in reference_images["files"]]
-            pipe_kwargs["image"] = images
-        else:
-            gr.Warning(
-                t(
-                    "Reference images were ignored. Please select another model, such as [klein] 4B, to account them."
-                ),
-                duration=12,
-            )
+    if (
+        reference_images
+        and reference_images.get("files")
+        and "image-to-image" in model.features
+    ):
+        pipe_kwargs["image"] = [Image.open(f) for f in reference_images["files"]]
 
     try:
         pipe_is_busy = True
@@ -597,7 +592,9 @@ if __name__ == "__main__":
                         show_progress="hidden",
                     )
 
-                with gr.Row():
+                with gr.Row(
+                    visible="image-to-image" in initial_model.features
+                ) as reference_images_row:
                     reference_images = gr.MultimodalTextbox(
                         label=t("Reference Images"),
                         sources=["upload"],
@@ -854,15 +851,17 @@ if __name__ == "__main__":
                 )
 
                 # On model load success:
+                # - display reference images if model supports them,
                 # - update settings according to model,
                 # - release model dropdown.
                 model_load.success(
                     lambda image_model: (
+                        gr.update(visible="image-to-image" in image_model.features),
                         gr.update(value=image_model.default.steps),
                         gr.update(value=image_model.default.cfg),
                     ),
                     inputs=model,
-                    outputs=[steps, cfg],
+                    outputs=[reference_images_row, steps, cfg],
                     show_progress="hidden",
                 ).then(
                     lambda: gr.update(interactive=True),
