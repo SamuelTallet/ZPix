@@ -16,9 +16,16 @@ from diffusers import ComponentsManager, ModularPipeline
 from diffusers.guiders import ClassifierFreeGuidance
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
-from sdnq import SDNQConfig  # noqa: F401
-from sdnq.common import use_torch_compile as triton_is_available
-from sdnq.loader import apply_sdnq_options_to_model
+
+# Force tensorwise FP8 matmul kernels as a fallback on hardware that lacks
+# native row-wise FP8 support, such as consumer NVIDIA Blackwell cards.
+# This must run before importing SDNQ, which reads the variable at import time.
+if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (12, 0):
+    environ.setdefault("SDNQ_USE_TENSORWISE_FP8_MM", "1")
+
+from sdnq import SDNQConfig  # noqa: E402, F401
+from sdnq.common import use_torch_compile as triton_is_available  # noqa: E402
+from sdnq.loader import apply_sdnq_options_to_model  # noqa: E402
 
 from source.py.disclaimer import TERMS_OF_USE, TermsOfUse
 from source.py.ex_prompts import get_example_prompts
