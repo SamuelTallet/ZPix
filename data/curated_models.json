@@ -24,6 +24,18 @@
         "features": ["text-to-image", "image-to-image"]
     },
     {
+        "id": "SamuelTallet/Anima-v1.0-Turbo-v0.2-SDNQ-8bit-dynamic-hadamard",
+        "backup_id": null,
+        "name": "Anima 1.0 Turbo 0.2",
+        "family": "Anima",
+        "default": {
+            "steps": 8,
+            "cfg": 1.0
+        },
+        "base_ids": ["anima"],
+        "features": ["text-to-image"]
+    },
+    {
         "id": "OzzyGT/Anima-base-v1.0_sdnq_dynamic_8bit",
         "backup_id": null,
         "name": "Anima Base 1.0",
