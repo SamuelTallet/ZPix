@@ -49,7 +49,6 @@
     "A new ZPix version is available! Check out what's new and download it <a href='{url}'>here</a>.": "Une nouvelle version de ZPix est disponible ! Découvrez ses nouveautés et téléchargez-la <a href='{url}'>ici</a>.",
     "Cleared Triton cache as it may be corrupted.": "Le cache de Triton a été vidé car il était peut-être corrompu.",
     "Regenerating same image...": "Re-génération de la même image...",
-    "Used model:": "Modèle utilisé :",
     "Please enter a prompt to generate an image.": "Veuillez saisir un prompt pour générer une image.",
     "Pipeline is busy. Please try again shortly.": "Le pipeline est occupé. Veuillez réessayer dans un instant."
 }
