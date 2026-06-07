@@ -357,10 +357,13 @@ def generate(
             duration=4,
         )
 
-    prompt: str = ""
+    prompt: str = (mm_prompt or {}).get("text", "").strip()
 
-    if mm_prompt and mm_prompt.get("text"):
-        prompt = mm_prompt["text"]
+    if not prompt:
+        raise gr.Error(
+            t("Please enter a prompt to generate an image."),
+            duration=4,
+        )
 
     width, height = parse_resolution(resolution)
     used_seed = randint(1, 1000000) if random_seed else int(seed)
