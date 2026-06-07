@@ -486,6 +486,18 @@ if __name__ == "__main__":
                 lora_name = gr.State(value=None)
                 """Name of loaded LoRA."""
 
+                show_adv_params_btn = gr.Button(
+                    "",
+                    icon=assets_dir / "ian-anandara" / "control.svg",
+                    elem_id="show-adv-params-btn",
+                )
+                gr.HTML(
+                    js_on_load=f"""
+                        const btn = document.getElementById("show-adv-params-btn")
+                        btn.title = "{t("Control more params (CFG, Steps...)")}"
+                    """
+                )
+
                 show_seed_btn = gr.Button(
                     "",
                     icon=assets_dir / "juicy-fish" / "dice.svg",
@@ -749,37 +761,47 @@ if __name__ == "__main__":
                     outputs=lora_name,
                 )
 
+                with gr.Row(visible=False) as adv_params_row:
+                    with gr.Column(min_width=160):
+                        cfg = gr.Slider(
+                            label=t("CFG"),
+                            minimum=0.0,
+                            maximum=10.0,
+                            value=initial_model.default.cfg,
+                            step=0.1,
+                        )
+                    with gr.Column(min_width=160):
+                        steps = gr.Slider(
+                            label=t("Steps"),
+                            minimum=1,
+                            maximum=50,
+                            value=initial_model.default.steps,
+                            step=1,
+                        )
+
+                show_adv_params_state = gr.State(value=False)
+
+                def toggle_row(visibility):
+                    visibility = not visibility
+                    return visibility, gr.update(visible=visibility)
+
+                show_adv_params_btn.click(
+                    toggle_row,
+                    inputs=show_adv_params_state,
+                    outputs=[show_adv_params_state, adv_params_row],
+                )
+
                 with gr.Row(visible=False) as seed_row:
                     seed = gr.Number(label=t("Seed"), value=42, precision=0)
                     random_seed = gr.Checkbox(label=t("Random"), value=True)
 
                 show_seed_state = gr.State(value=False)
 
-                def toggle_seed_row(visibility):
-                    visibility = not visibility
-                    return visibility, gr.update(visible=visibility)
-
                 show_seed_btn.click(
-                    toggle_seed_row,
+                    toggle_row,
                     inputs=show_seed_state,
                     outputs=[show_seed_state, seed_row],
                 )
-
-                with gr.Row(visible=False):
-                    steps = gr.Slider(
-                        label=t("Steps"),
-                        minimum=1,
-                        maximum=50,
-                        value=initial_model.default.steps,
-                        step=1,
-                    )
-                    cfg = gr.Slider(
-                        label=t("CFG"),
-                        minimum=0.0,
-                        maximum=10.0,
-                        value=initial_model.default.cfg,
-                        step=0.1,
-                    )
 
                 # When a new image model is selected:
                 # - lock model dropdown,
