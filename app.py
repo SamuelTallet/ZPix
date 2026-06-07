@@ -2,6 +2,7 @@
 
 # Based on https://huggingface.co/spaces/Tongyi-MAI/Z-Image-Turbo
 import logging
+import sys
 from argparse import ArgumentParser
 from json import load as load_json
 from os import environ
@@ -42,6 +43,11 @@ from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
 
 logging.basicConfig(format="%(levelname)s: %(message)s")
+
+# Transformers prints "ERROR ... not documented" docstring warnings to stdout,
+# we suppress them as they're harmless.
+_stdout_write = sys.stdout.write
+sys.stdout.write = lambda s: 0 if "not documented" in s else _stdout_write(s)
 
 # Path to Triton cache directory
 # shortened by good measure to avoid too long path errors on Windows
