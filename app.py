@@ -621,6 +621,7 @@ if __name__ == "__main__":
                     )
                     gr.HTML(
                         visible="hidden",
+                        elem_classes="always-hidden",
                         js_on_load=f"""
                             let zone = document.getElementById("reference-images")
                             zone.title = "{t("Drag an image here to add it as a reference")}"

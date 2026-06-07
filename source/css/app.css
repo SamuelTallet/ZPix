@@ -8,6 +8,10 @@
     user-select: none;
 }
 
+.always-hidden {
+    display: none;
+}
+
 #tou-row {
     position: fixed;
     inset: 0;
