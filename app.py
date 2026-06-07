@@ -614,7 +614,11 @@ if __name__ == "__main__":
                     )
 
                 with gr.Row(
-                    visible="image-to-image" in initial_model.features
+                    # A row hidden on startup is not mounted by Gradio,
+                    # that's why we use the "hidden" class instead of the `visible` property.
+                    elem_classes=(
+                        [] if "image-to-image" in initial_model.features else ["hidden"]
+                    )
                 ) as reference_images_row:
                     reference_images = gr.MultimodalTextbox(
                         label=t("Reference Images"),
@@ -627,7 +631,7 @@ if __name__ == "__main__":
                     )
                     gr.HTML(
                         visible="hidden",
-                        elem_classes="always-hidden",
+                        elem_classes="hidden",
                         js_on_load=f"""
                             let zone = document.getElementById("reference-images")
                             zone.title = "{t("Drag an image here to add it as a reference")}"
@@ -888,7 +892,13 @@ if __name__ == "__main__":
                 # - release model dropdown.
                 model_load.success(
                     lambda image_model: (
-                        gr.update(visible="image-to-image" in image_model.features),
+                        gr.update(
+                            elem_classes=(
+                                []
+                                if "image-to-image" in image_model.features
+                                else ["hidden"]
+                            )
+                        ),
                         gr.update(value=image_model.default.steps),
                         gr.update(value=image_model.default.cfg),
                     ),
