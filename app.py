@@ -1145,6 +1145,13 @@ if __name__ == "__main__":
             inputs=selected_image_index,
             outputs=gallery_images,
         ).then(
+            # Sync explicitly rather than relying on the gallery .select event.
+            # Reselecting the same index after a deletion wouldn't fire .select.
+            sync_used_prompt,
+            inputs=[gallery_images, selected_image_index],
+            outputs=used_prompt,
+            show_progress="hidden",
+        ).then(
             lambda: gr.update(visible=False),
             outputs=examples_column,
         )
