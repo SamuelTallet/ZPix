@@ -1136,6 +1136,7 @@ if __name__ == "__main__":
         # On generation success:
         # - release model dropdown,
         # - select (preview) generated image in gallery,
+        # - sync used prompt,
         # - make example prompts invisible.
         generation.success(
             lambda: gr.update(interactive=True),
