@@ -86,7 +86,7 @@ Quantized models:
 Base models:
 - [Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) by Tongyi-MAI
 - [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) by Black Forest Labs
-- [Anima](https://huggingface.co/circlestone-labs/Anima) by CircleStone Labs
+- [Anima](https://huggingface.co/circlestone-labs/Anima) by CircleStone Labs, built on [NVIDIA Cosmos](https://github.com/nvidia-cosmos)
 
 Python packages:
 - [Torch](https://pytorch.org/)
@@ -99,14 +99,17 @@ Python packages:
 - [CrossFileDialog](https://pypi.org/project/crossfiledialog/)
 - [Gradio](https://pypi.org/project/gradio/)
 
-Python tools: [uv](https://github.com/astral-sh/uv), [ty](https://github.com/astral-sh/ty) and [Ruff](https://github.com/astral-sh/ruff) by Astral.
+Python tools: [uv](https://github.com/astral-sh/uv), [ty](https://github.com/astral-sh/ty) and [Ruff](https://github.com/astral-sh/ruff) by Astral
 
-C++ libraries: [WebView2](https://learn.microsoft.com/microsoft-edge/webview2/) by Microsoft.<br>
-C++ tools: [CMake](https://cmake.org/) by Kitware, and [vcpkg](https://github.com/microsoft/vcpkg) by Microsoft.
+C++ libraries: [WebView2](https://learn.microsoft.com/microsoft-edge/webview2/) by Microsoft<br>
+C++ tools: [CMake](https://cmake.org/) by Kitware, and [vcpkg](https://github.com/microsoft/vcpkg) by Microsoft
 
-Icons: [Control](https://www.flaticon.com/free-icon/control_10472397) by Ian Anandara, [Dice](https://www.flaticon.com/free-icon/dice_1714307) by Juicy Fish, [Folder](https://www.flaticon.com/free-icon/folder_2577144) by Freepik, [FAQ](https://www.freepik.com/icon/technology_13631866) by Kerismaker, and [Refresh](https://lucide.dev/icons/refresh-ccw) by Lucide.
-
-Reference image: [A Woman Posing in a Field of Yellow Flowers](https://www.pexels.com/photo/a-woman-posing-in-a-field-of-yellow-flowers-16465981/) by Josh Hild.
+Icons:
+- [Control](https://www.flaticon.com/free-icon/control_10472397) by Ian Anandara
+- [Dice](https://www.flaticon.com/free-icon/dice_1714307) by Juicy Fish
+- [Folder](https://www.flaticon.com/free-icon/folder_2577144) by Freepik
+- [FAQ](https://www.freepik.com/icon/technology_13631866) by Kerismaker
+- [Refresh](https://lucide.dev/icons/refresh-ccw) by Lucide
 
 ## Thanks
 
