@@ -43,7 +43,7 @@
     "of generated images": "des images générées",
     "See all credits": "Voir tous les crédits",
     "Terms of Use": "Conditions d'utilisation",
-    "By using this application to create images, I engage to respect copyright and person's image right, and not mislead others.": "En utilisant cette application pour créer des images, je m'engage à respecter les droits d'auteur et le droit à l'image des personnes, et à ne pas induire les autres en erreur.",
+    "By using this app to create images, I agree to respect copyright and personal image rights, and not to mislead others. Because models may generate inappropriate images even when not asked to, as a precaution, I agree not to use this app in the presence of children.": "En utilisant cette application pour créer des images, je m'engage à respecter les droits d'auteur et le droit à l'image des personnes, et à ne pas induire les autres en erreur. Étant donné que les modèles peuvent générer des images inappropriées même sans qu'on le leur demande, par mesure de précaution, je m'engage à ne pas utiliser cette application en présence d'enfants.",
     "I agree": "Je suis d'accord",
     "Image generation may be slow because diffusion pipeline is not optimized.": "La génération d'images risque d'être lente car le pipeline de diffusion n'est pas optimisé.",
     "Try upgrading your graphics card drivers, then reboot your PC and restart": "Essayez de mettre à jour les pilotes de votre carte graphique, puis redémarrez votre PC et relancez",

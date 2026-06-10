@@ -28,7 +28,7 @@ from sdnq import SDNQConfig  # noqa: E402, F401
 from sdnq.common import use_torch_compile as triton_is_available  # noqa: E402
 from sdnq.loader import apply_sdnq_options_to_model  # noqa: E402
 
-from source.py.disclaimer import TERMS_OF_USE, TermsOfUse
+from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
 from source.py.image_model import ImageModel
@@ -1073,8 +1073,11 @@ if __name__ == "__main__":
         ) as tou_row:
             with gr.Column(elem_id="tou-card"):
                 gr.Markdown(f"### {t('Terms of Use')}")
-                gr.Markdown(t(TERMS_OF_USE))
-                agree_tou_btn = gr.Button(t("I agree"), variant="primary")
+                gr.Markdown(t(get_metadata("TERMS_OF_USE")))
+                agree_tou_btn = gr.Button(
+                    t("I agree"),
+                    variant="primary",
+                )
 
                 agree_tou_btn.click(tou.accept).then(
                     lambda: (gr.update(visible=False), gr.update(elem_classes=[])),
