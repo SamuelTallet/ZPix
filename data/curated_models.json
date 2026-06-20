@@ -12,8 +12,8 @@
         "features": ["text-to-image"]
     },
     {
-        "id": "Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
-        "backup_id": "SamuelTallet/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
+        "id": "SamuelTallet/FLUX.2-klein-4B-SDNQ-8bit-dynamic-hadamard256",
+        "backup_id": null,
         "name": "FLUX.2 [klein] 4B",
         "family": "FLUX.2",
         "default": {
@@ -24,7 +24,7 @@
         "features": ["text-to-image", "image-to-image"]
     },
     {
-        "id": "SamuelTallet/Anima-v1.0-Turbo-v0.2-SDNQ-8bit-dynamic-hadamard",
+        "id": "SamuelTallet/Anima-v1.0-Turbo-v0.2-SDNQ-8bit-dynamic-hadamard256",
         "backup_id": null,
         "name": "Anima 1.0 Turbo 0.2",
         "family": "Anima",
