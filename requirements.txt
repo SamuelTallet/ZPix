@@ -2,7 +2,7 @@
 # See start.ps1 and start.sh for platform and accelerator specific dependencies.
 
 diffusers @ https://github.com/huggingface/diffusers/archive/74b07e215665a74abd9e7e68e1251cace3c176ad.zip
-peft==0.18.1
+peft==0.19.1
 sdnq==0.2.0
 platformdirs==4.9.4
 crossfiledialog==1.3.1
