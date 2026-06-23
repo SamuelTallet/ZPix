@@ -28,6 +28,7 @@ from sdnq import SDNQConfig  # noqa: E402, F401
 from sdnq.common import use_torch_compile as triton_is_available  # noqa: E402
 from sdnq.loader import apply_sdnq_options_to_model  # noqa: E402
 
+from source.py.blocking_task import BlockingTask
 from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
@@ -86,9 +87,6 @@ pipe: ModularPipeline | None = None
 
 pipe_is_optimized: bool = False
 """Pipeline is optimized?"""
-
-pipe_is_busy: bool = False
-"""Pipeline is busy? e.g. loading a LoRA."""
 
 output_dir = get_output_dir()
 """The folder where ZPix saves generated images."""
@@ -219,15 +217,16 @@ def load_model(model: ImageModel) -> ImageModel:
     return model
 
 
-def swap_model(model: ImageModel) -> ImageModel:
-    """Swap an image model pipeline."""
-    global pipe_is_busy
+def fetch_model(model: ImageModel) -> None:
+    """Fetch an image model, blocking other critical tasks."""
+    with BlockingTask.run(t("Please wait, a model is being downloaded.")):
+        download_model(model, t)
 
-    pipe_is_busy = True
-    try:
+
+def swap_model(model: ImageModel) -> ImageModel:
+    """Swap an image model pipeline, blocking other critical tasks."""
+    with BlockingTask.run(t("Please wait, a model is being loaded.")):
         return load_model(model)
-    finally:
-        pipe_is_busy = False
 
 
 def swap_lora(path: str, image_model: ImageModel) -> str | None:
@@ -240,13 +239,8 @@ def swap_lora(path: str, image_model: ImageModel) -> str | None:
     Returns:
         Trigger word of LoRA model.
     """
-    global pipe_is_busy
-
-    if pipe_is_busy:
-        raise gr.Error(
-            t("Pipeline is busy. Please try again shortly."),
-            duration=4,
-        )
+    if BlockingTask.is_running:
+        raise gr.Error(str(BlockingTask.message), duration=4)
 
     if not path.endswith(".safetensors"):
         raise gr.Error(
@@ -274,18 +268,15 @@ def swap_lora(path: str, image_model: ImageModel) -> str | None:
             k: v for k, v in bfloat16_lora.items() if not k.endswith(".alpha")
         }
 
-    pipe_is_busy = True
-
     try:
-        pipe.unload_lora_weights()
-        pipe.load_lora_weights(bfloat16_lora, adapter_name="lora_1")
+        with BlockingTask.run(t("Please try again, a LoRA was loading.")):
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(bfloat16_lora, adapter_name="lora_1")
     except Exception as error:
         raise gr.Error(
             t("Failed to load LoRA, you may need to restart application."),
             duration=None,
         ) from error
-    finally:
-        pipe_is_busy = False
 
     trigger_word = lora.trigger_word()
 
@@ -304,19 +295,7 @@ def set_lora_strength(strength: float):
 
 def unload_lora():
     """Unload LoRA model."""
-    global pipe_is_busy
-
-    if pipe_is_busy:
-        raise gr.Error(
-            t("Pipeline is busy. Please try again shortly."),
-            duration=4,
-        )
-
-    try:
-        pipe_is_busy = True
-        pipe.unload_lora_weights()
-    finally:
-        pipe_is_busy = False
+    pipe.unload_lora_weights()
 
 
 def generate(
@@ -350,18 +329,10 @@ def generate(
         Tuple of (updated gallery, last image index, output paths, used seed).
 
     Raises:
-        gr.Error: If the pipeline is not loaded or busy.
+        gr.Error: If the pipeline is not loaded.
     """
-    global pipe_is_busy
-
     if pipe is None:
         raise gr.Error("Pipeline not loaded.")
-
-    if pipe_is_busy:
-        raise gr.Error(
-            t("Pipeline is busy. Please try again shortly."),
-            duration=4,
-        )
 
     prompt: str = (mm_prompt or {}).get("text", "").strip()
 
@@ -396,18 +367,16 @@ def generate(
     ):
         pipe_kwargs["image"] = [Image.open(f) for f in reference_images["files"]]
 
-    try:
-        pipe_is_busy = True
-        image = pipe(**pipe_kwargs).images[0]
-    except UnicodeDecodeError:
-        # A corrupted Triton cache can cause an UnicodeDecodeError.
-        rmtree(Path.home() / ".triton", ignore_errors=True)
-        gr.Warning(t("Cleared Triton cache as it may be corrupted."), duration=6)
+    with BlockingTask.run(t("Please try again shortly, an image is being generated.")):
+        try:
+            image = pipe(**pipe_kwargs).images[0]
+        except UnicodeDecodeError:
+            # A corrupted Triton cache can cause an UnicodeDecodeError.
+            rmtree(Path.home() / ".triton", ignore_errors=True)
+            gr.Warning(t("Cleared Triton cache as it may be corrupted."), duration=6)
 
-        gr.Info(t("Regenerating same image..."), duration=8)
-        image = pipe(**pipe_kwargs).images[0]
-    finally:
-        pipe_is_busy = False
+            gr.Info(t("Regenerating same image..."), duration=8)
+            image = pipe(**pipe_kwargs).images[0]
 
     # Prepare metadata to be saved in PNG text chunks.
     image_metadata = PngInfo()
@@ -849,9 +818,7 @@ if __name__ == "__main__":
                         show_progress="hidden",
                     )
                     .then(
-                        lambda model_id: download_model(
-                            find_model(model_id, models), t
-                        ),
+                        lambda model_id: fetch_model(find_model(model_id, models)),
                         inputs=model_select,
                     )
                 )
@@ -1097,22 +1064,33 @@ if __name__ == "__main__":
             show_progress="hidden",
         )
 
-        # Before generation starts:
+        def validate_generation():
+            """Validate that generation can start, blocking otherwise.
+
+            Raises:
+                gr.Error: If a blocking task (e.g. a model load) is running.
+            """
+            if BlockingTask.is_running:
+                raise gr.Error(str(BlockingTask.message), duration=6)
+
+        # On "Generate Image" button click:
+        generation_validated = generate_btn.click(validate_generation)
+
+        # If generation was validated:
         # - lock model dropdown,
         # - hide "Used Prompt" a.k.a "Displayed Image Prompt" block,
         # - hide "Delete Image" button (it's shown later, see gallery_images.change).
-        generation = generate_btn.click(
+        ui_setup_for_generation = generation_validated.success(
             lambda: (
                 gr.update(interactive=False),
                 gr.update(visible=False),
                 gr.update(visible=False),
             ),
-            outputs=[
-                model_select,
-                used_prompt,
-                delete_output_image_btn,
-            ],
-        ).then(
+            outputs=[model_select, used_prompt, delete_output_image_btn],
+        )
+
+        # Once UI is setup: generate image.
+        generation = ui_setup_for_generation.success(
             generate,
             inputs=[
                 model,
@@ -1160,9 +1138,10 @@ if __name__ == "__main__":
             outputs=examples_column,
         )
 
-        # On generation failure: release model dropdown.
+        # On generation failure: release the model dropdown, unless another
+        # blocking task (e.g. a model download) is still running and "owns" it.
         generation.failure(
-            lambda: gr.update(interactive=True),
+            lambda: gr.update(interactive=not BlockingTask.is_running),
             outputs=model_select,
         )
 

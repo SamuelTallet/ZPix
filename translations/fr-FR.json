@@ -51,5 +51,8 @@
     "Cleared Triton cache as it may be corrupted.": "Le cache de Triton a été vidé car il était peut-être corrompu.",
     "Regenerating same image...": "Re-génération de la même image...",
     "Please enter a prompt to generate an image.": "Veuillez saisir un prompt pour générer une image.",
-    "Pipeline is busy. Please try again shortly.": "Le pipeline est occupé. Veuillez réessayer dans un instant."
+    "Please try again shortly, an image is being generated.": "Veuillez réessayer dans un instant, une image est en cours de génération.",
+    "Please try again, a LoRA was loading.": "Veuillez réessayer, un LoRA était en cours de chargement.",
+    "Please wait, a model is being downloaded.": "Veuillez patienter, un modèle est en cours de téléchargement.",
+    "Please wait, a model is being loaded.": "Veuillez patienter, un modèle est en cours de chargement."
 }
