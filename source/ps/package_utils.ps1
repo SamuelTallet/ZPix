@@ -68,44 +68,40 @@ function Install-TorchVision {
     }
 }
 
-function Install-Package {
+function Install-Dependency {
     param (
         [Parameter(Mandatory = $true)]
-        [string]$Id, # Package ID. Example: sdnq
-
-        [Parameter(Mandatory = $true)]
-        [string]$Version, # Package version
+        [string]$Spec, # Specifier (package, wheel, etc.)
 
         [Parameter(Mandatory = $true)]
         [string]$Uv # Path to uv executable
     )
 
-    # We enforce exact package version for stability.
-    $uvArgs = @("pip", "install", "$Id==$Version")
+    $uvArgs = @("pip", "install", $Spec)
 
-    Write-Debug "Installing $Id package with $Uv $uvArgs"
+    Write-Debug "Installing dependency with $Uv $uvArgs"
     & $Uv $uvArgs
 
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install $Id==$Version"
+        throw "Failed to install dependency $Spec"
     }
 }
 
-function Install-Archive {
+function Install-Requirements {
     param (
         [Parameter(Mandatory = $true)]
-        [string]$Source, # Archive source (URL, etc.)
+        [string]$File, # Path to requirements*.txt
 
         [Parameter(Mandatory = $true)]
         [string]$Uv # Path to uv executable
     )
 
-    $uvArgs = @("pip", "install", $Source)
+    $uvArgs = @("pip", "install", "-r", $File)
 
-    Write-Debug "Installing archive with $Uv $uvArgs"
+    Write-Debug "Installing requirements with $Uv $uvArgs"
     & $Uv $uvArgs
 
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install $Source"
+        throw "Failed to install dependencies from $File"
     }
 }
