@@ -4,6 +4,6 @@
 diffusers @ https://github.com/huggingface/diffusers/archive/3993de59e37344d92aa24ec25bdc39413157b744.zip
 peft==0.19.1
 sdnq==0.2.0
-platformdirs==4.9.4
+platformdirs==4.10.0
 crossfiledialog==1.3.1
 gradio==6.10.0
