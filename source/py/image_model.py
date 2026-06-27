@@ -49,3 +49,16 @@ class ImageModel(BaseModel):
         ]
     ]
     """Features supported by this model."""
+
+    def has_modular_pipeline(self) -> bool:
+        """Does this model's family has a Diffusers modular pipeline?"""
+        return self.family in (
+            "Anima",
+            "ERNIE-Image",
+            "FLUX",
+            "FLUX.2",
+            "Qwen-Image",
+            "SD3",
+            "SDXL",
+            "Z-Image",
+        )

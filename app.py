@@ -13,7 +13,7 @@ from time import time_ns
 
 import gradio as gr
 import torch
-from diffusers import ComponentsManager, ModularPipeline
+from diffusers import ComponentsManager, DiffusionPipeline, ModularPipeline
 from diffusers.guiders import ClassifierFreeGuidance
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
@@ -82,7 +82,7 @@ metadata: dict[str, str] = {}
 models: list[ImageModel] = []
 """Available image models."""
 
-pipe: ModularPipeline | None = None
+pipe: ModularPipeline | DiffusionPipeline | None = None
 """Pipeline."""
 
 pipe_is_optimized: bool = False
@@ -166,25 +166,33 @@ def load_model(model: ImageModel) -> ImageModel:
     global pipe
     global pipe_is_optimized
 
-    # A fresh manager per load avoids accumulating components across model swaps.
-    manager = ComponentsManager()
+    def create_pipe(
+        model_id: str,
+    ) -> tuple[DiffusionPipeline | ModularPipeline, ComponentsManager | None]:
+        """Create a standard pipeline or a modular one."""
+        if not model.has_modular_pipeline():
+            return DiffusionPipeline.from_pretrained(
+                model_id,
+                torch_dtype=torch.bfloat16,
+            ), None
+
+        components_manager = ComponentsManager()
+        modular_pipeline = ModularPipeline.from_pretrained(
+            model_id,
+            components_manager=components_manager,
+        )
+        modular_pipeline.load_components(torch_dtype=torch.bfloat16)
+
+        return modular_pipeline, components_manager
 
     try:
-        pipe = ModularPipeline.from_pretrained(
-            model.id,
-            components_manager=manager,
-        )
-        pipe.load_components(torch_dtype=torch.bfloat16)
+        pipe, manager = create_pipe(model.id)
     except Exception:
         if model.backup_id:
             logging.warning(
                 f"Can't load {model.id}, falling back to {model.backup_id}."
             )
-            pipe = ModularPipeline.from_pretrained(
-                model.backup_id,
-                components_manager=manager,
-            )
-            pipe.load_components(torch_dtype=torch.bfloat16)
+            pipe, manager = create_pipe(model.backup_id)
         else:
             raise
 
@@ -212,7 +220,10 @@ def load_model(model: ImageModel) -> ImageModel:
     except RuntimeError as e:
         logging.warning(f"Can't apply memory format optimization: {e}")
 
-    manager.enable_auto_cpu_offload()
+    if manager:  # Modular pipeline.
+        manager.enable_auto_cpu_offload()
+    else:
+        pipe.enable_sequential_cpu_offload()
 
     return model
 
@@ -345,13 +356,6 @@ def generate(
     width, height = parse_resolution(resolution)
     used_seed = randint(1, 1000000) if random_seed else int(seed)
 
-    if "guider" in pipe.component_names:
-        pipe.update_components(
-            # Clamp CFG to >= 1.0: below 1.0 the guider pulls predictions toward
-            # the unconditional, weakening prompt adherence (ignored at 0.0).
-            guider=ClassifierFreeGuidance(guidance_scale=max(float(cfg), 1.0))
-        )
-
     pipe_kwargs = {
         "prompt": prompt,
         "height": height,
@@ -359,6 +363,16 @@ def generate(
         "num_inference_steps": int(steps),
         "generator": torch.manual_seed(used_seed),
     }
+
+    if model.has_modular_pipeline():
+        # Modular pipelines configure CFG through a guider component.
+        if "guider" in pipe.component_names:
+            pipe.update_components(
+                guider=ClassifierFreeGuidance(guidance_scale=max(float(cfg), 1.0))
+            )
+    else:
+        # Standard pipelines take CFG as a call argument.
+        pipe_kwargs["guidance_scale"] = float(cfg)
 
     if (
         reference_images
