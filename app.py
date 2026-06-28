@@ -139,26 +139,17 @@ def get_theme():
     )
 
 
-def on_app_load():
-    """On app load."""
-    if not pipe_is_optimized:
-        gr.Warning(
-            t(
-                "Image generation may be slow because diffusion pipeline is not optimized."
-            )
-            + "<br>"
-            + t(
-                "Try upgrading your graphics card drivers, then reboot your PC and restart"
-            )
-            + f" {get_metadata('NAME')}.",
-            duration=None,  # Until user closes it.
-        )
+def warn_if_pipe_not_optimized():
+    """Warn the user if the diffusion pipeline could not be optimized."""
+    if pipe_is_optimized:
+        return
 
-    check_for_updates(
-        get_metadata("VERSION"),
-        get_metadata("VERSION_URL"),
-        f"{get_metadata('HOME_URL')}/releases",
-        t,
+    gr.Warning(
+        t("Image generation may be slow because diffusion pipeline is not optimized.")
+        + "<br>"
+        + t("Try upgrading your graphics card drivers, then reboot your PC and restart")
+        + f" {get_metadata('NAME')}.",
+        duration=None,  # Until user closes it.
     )
 
 
@@ -661,7 +652,11 @@ if __name__ == "__main__":
                         variant="primary",
                     )
 
-                with gr.Row(visible=False) as lora_row:
+                # Start visible so Gradio mounts and lays out the slider at
+                # load time, then gets collapsed on app load (see app.load
+                # below). Otherwise the slider, first mounted while hidden,
+                # stays invisible the first time the row is revealed.
+                with gr.Row() as lora_row:
                     lora_strength = gr.Slider(
                         scale=2,
                         label=t("LoRA Strength"),
@@ -1167,7 +1162,20 @@ if __name__ == "__main__":
             outputs=model_select,
         )
 
-        app.load(on_app_load)
+        app.load(warn_if_pipe_not_optimized)
+
+        app.load(
+            lambda: check_for_updates(
+                get_metadata("VERSION"),
+                get_metadata("VERSION_URL"),
+                f"{get_metadata('HOME_URL')}/releases",
+                t,
+            )
+        )
+
+        # Collapse the LoRA settings row, which starts visible only so its
+        # slider mounts and lays out at load time (see lora_row above).
+        app.load(lambda: gr.update(visible=False), outputs=lora_row)
 
     app.launch(
         server_port=args.port,
