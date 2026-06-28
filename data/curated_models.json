@@ -12,9 +12,21 @@
         "features": ["text-to-image"]
     },
     {
+        "id": "Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
+        "backup_id": "SamuelTallet/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
+        "name": "FLUX.2 [klein] 4B",
+        "family": "FLUX.2",
+        "default": {
+            "steps": 4,
+            "cfg": 1.0
+        },
+        "base_ids": ["flux2_klein_4b"],
+        "features": ["text-to-image", "image-to-image"]
+    },
+    {
         "id": "SamuelTallet/FLUX.2-klein-4B-SDNQ-8bit-dynamic-hadamard256",
         "backup_id": null,
-        "name": "FLUX.2 [klein] 4B",
+        "name": "FLUX.2 [klein] 4B HQ",
         "family": "FLUX.2",
         "default": {
             "steps": 4,
