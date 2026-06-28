@@ -34,6 +34,7 @@ from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
 from source.py.image_model import ImageModel
 from source.py.image_models import download_model, find_model, get_models
+from source.py.krea2_flash import install_krea2_flash_attn
 from source.py.lora_model import LoraModel
 from source.py.os_abstract import open_with_default_app
 from source.py.output_dir import change_output_dir, get_output_dir
@@ -212,6 +213,13 @@ def load_model(model: ImageModel) -> ImageModel:
             except Exception as e:
                 pipe.transformer.reset_attention_backend()
                 logging.warning(f"FlashAttention is not available: {e}")
+        elif model.family == "Krea 2":
+            try:
+                install_krea2_flash_attn(pipe)
+                pipe_is_optimized = True
+            except Exception as e:
+                pipe.transformer.reset_attention_backend()
+                logging.warning(f"FlashAttention is not available for Krea 2: {e}")
         else:
             pipe.transformer.set_attention_backend("native")
 

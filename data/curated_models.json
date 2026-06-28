@@ -58,5 +58,17 @@
         },
         "base_ids": ["anima"],
         "features": ["text-to-image"]
+    },
+    {
+        "id": "SamuelTallet/Krea-2-Turbo-SDNQ-3bit-dynamic-hadamard256",
+        "backup_id": null,
+        "name": "Krea 2 Turbo",
+        "family": "Krea 2",
+        "default": {
+            "steps": 8,
+            "cfg": 0.0
+        },
+        "base_ids": ["krea2"],
+        "features": ["text-to-image"]
     }
 ]
