@@ -1,13 +1,13 @@
 # ZPix
 
-<img src="https://raw.githubusercontent.com/SamuelTallet/ZPix/refs/heads/main/docs/screens/ZPix-v1.0.6.webp">
+<img src="https://raw.githubusercontent.com/SamuelTallet/ZPix/refs/heads/main/docs/screens/ZPix-v1.0.7.webp">
 
 Generate and edit images easily, for free, using solely the power of your GPU. 
 Hotswap LoRAs. Drag reference images directly from output gallery, which is always visible. Everything is made for your comfort. See [all features](#features).
 
 ## Quick start
 
-1. Download and extract [ZPix-v1.0.6.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.6/ZPix-v1.0.6.zip)
+1. Download and extract [ZPix-v1.0.7.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.7/ZPix-v1.0.7.zip)
 2. Run `ZPix.exe`
     - If SmartScreen pops, click on "More info", "Run anyway"
     - If a DLL is missing, install [Visual C++ Redist](https://aka.ms/vc14/vc_redist.x64.exe) and re-run
@@ -26,9 +26,14 @@ Hotswap LoRAs. Drag reference images directly from output gallery, which is alwa
 
 ZPix setups Python environment and packages for you.
 
+### Five models
+
+Z-Image Turbo, FLUX.2 [klein] 4B, Anima "Turbo", Anima Base, and Krea 2 Turbo.
+
 ### Lazy download
 
-Models are progressively¹ downloaded from Hugging Face.
+Models are progressively downloaded from Hugging Face.<br>
+Initial model at start, then other models when requested.
 
 ### Text-to-Image
 
@@ -36,12 +41,12 @@ Create image from prompt.
 
 ### Image-to-Image
 
+- Edit image based on prompt and reference images.
 - Add or drag reference images from output gallery or anywhere.
-- Edit image based on prompt and optional reference images.
 
 ### Prompts history
 
-- Extract prompt from image², dragged from output gallery or anywhere.
+- Extract prompt from image (metadata), dragged from output gallery or anywhere.
 - Reuse or copy prompt of displayed image with dedicated buttons.
 
 ### Custom styles
@@ -55,12 +60,7 @@ Create image from prompt.
 
 ### Seed control
 
-Specify a seed value for reproducibility or leave it random.
-
-#### Remarks
-
-1. Initial model at start, then other models when requested.
-2. If image contains prompt in its metadata.
+Specify a seed value for image reproducibility or leave it random.
 
 ## Gallery
 
@@ -87,6 +87,7 @@ Base models:
 - [Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) by Tongyi-MAI
 - [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) by Black Forest Labs
 - [Anima](https://huggingface.co/circlestone-labs/Anima) by CircleStone Labs, built on [NVIDIA Cosmos](https://github.com/nvidia-cosmos)
+- [Krea-2-Turbo](https://huggingface.co/krea/Krea-2-Turbo) by Krea
 
 Python packages:
 - [Torch](https://pytorch.org/)
