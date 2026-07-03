@@ -9,7 +9,7 @@ from torch import bfloat16
 class LoraModel:
     """A LoRA model."""
 
-    def __init__(self, path: str | Path):
+    def __init__(self, path: Path):
         """Open a LoRA model stored in safe tensors.
 
         Args:
@@ -59,8 +59,7 @@ class LoraModel:
         """Most frequent tag of this LoRA, from its metadata.
 
         Raises:
-            JSONDecodeError: If tag frequency in metadata is invalid.
-            ValueError: If tag frequency [...] has a bad structure.
+            ValueError: If tag frequency JSON is invalid or has a bad structure.
             TypeError: If tag in metadata is not a string.
 
         Returns:

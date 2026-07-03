@@ -2,7 +2,6 @@
 
 # Based on https://huggingface.co/spaces/Tongyi-MAI/Z-Image-Turbo
 import logging
-import sys
 from argparse import ArgumentParser
 from json import load as load_json
 from os import environ
@@ -18,17 +17,20 @@ from diffusers.guiders import ClassifierFreeGuidance
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
+import source.py.stdout_filter  # noqa: F401
+
 # Force tensorwise FP8 matmul kernels as a fallback on hardware that lacks
 # native row-wise FP8 support, such as consumer NVIDIA Blackwell cards.
 # This must run before importing SDNQ, which reads the variable at import time.
 if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (12, 0):
     environ.setdefault("SDNQ_USE_TENSORWISE_FP8_MM", "1")
 
-from sdnq import SDNQConfig  # noqa: E402, F401
-from sdnq.common import use_torch_compile as triton_is_available  # noqa: E402
-from sdnq.loader import apply_sdnq_options_to_model  # noqa: E402
+from sdnq import SDNQConfig  # noqa: F401
+from sdnq.common import use_torch_compile as triton_is_available
+from sdnq.loader import apply_sdnq_options_to_model
 
 from source.py.blocking_task import BlockingTask
+from source.py.custom_errors import EventAbort
 from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
@@ -36,6 +38,7 @@ from source.py.image_model import ImageModel
 from source.py.image_models import download_model, find_model, get_models
 from source.py.krea2_flash import install_krea2_flash_attn
 from source.py.lora_model import LoraModel
+from source.py.lora_models import extract_lora_name, select_lora_file
 from source.py.os_abstract import open_with_default_app
 from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
@@ -45,11 +48,6 @@ from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
 
 logging.basicConfig(format="%(levelname)s: %(message)s")
-
-# Transformers prints "ERROR ... not documented" docstring warnings to stdout,
-# we suppress them as they're harmless.
-_stdout_write = sys.stdout.write
-sys.stdout.write = lambda s: 0 if "not documented" in s else _stdout_write(s)
 
 # Path to Triton cache directory
 # shortened by good measure to avoid too long path errors on Windows
@@ -239,7 +237,7 @@ def swap_model(model: ImageModel) -> ImageModel:
         return load_model(model)
 
 
-def swap_lora(path: str, image_model: ImageModel) -> str | None:
+def swap_lora(path: Path, image_model: ImageModel) -> str | None:
     """Swap or load a new LoRA model.
 
     Args:
@@ -249,15 +247,6 @@ def swap_lora(path: str, image_model: ImageModel) -> str | None:
     Returns:
         Trigger word of LoRA model.
     """
-    if BlockingTask.is_running:
-        raise gr.Error(str(BlockingTask.message), duration=4)
-
-    if not path.endswith(".safetensors"):
-        raise gr.Error(
-            t("LoRA file extension must be .safetensors"),
-            duration=20,
-        )
-
     lora = LoraModel(path)
 
     try:
@@ -291,6 +280,29 @@ def swap_lora(path: str, image_model: ImageModel) -> str | None:
     trigger_word = lora.trigger_word()
 
     return trigger_word
+
+
+def validate_lora_swap(path: Path | None) -> None:
+    """Validate a LoRA selection before swapping.
+
+    Args:
+        path: Path to selected LoRA file, or None if selection was cancelled.
+
+    Raises:
+        EventAbort: If the user cancelled the file dialog.
+        gr.Error: If the file is not a *.safetensors, or a blocking task runs.
+    """
+    if path is None:
+        raise EventAbort("LoRA file selection cancelled.")
+
+    if path.suffix != ".safetensors":
+        raise gr.Error(
+            t("LoRA file extension must be .safetensors"),
+            duration=20,
+        )
+
+    if BlockingTask.is_running:
+        raise gr.Error(str(BlockingTask.message), duration=4)
 
 
 def set_lora_strength(strength: float):
@@ -456,7 +468,7 @@ if __name__ == "__main__":
 
         with gr.Row(elem_classes=[] if tou.accepted() else ["blurred"]) as ui_row:
             with gr.Column(min_width=48, elem_classes=["sidebar"]):
-                gr.Button(
+                swap_lora_btn = gr.Button(
                     "",
                     icon=assets_dir / "lora_grad.svg",
                     elem_id="swap-lora-btn",
@@ -467,10 +479,10 @@ if __name__ == "__main__":
                         btn.title = "{t("Load a LoRA file to apply a new style")}"
                     """
                 )
-                lora_path = gr.Textbox(
-                    visible="hidden",  # See "portal" in app.js
-                    elem_id="lora-path",
-                )
+
+                lora_path = gr.State(value=None)
+                """Path of LoRA to load or loaded."""
+
                 lora_name = gr.State(value=None)
                 """Name of loaded LoRA."""
 
@@ -697,20 +709,31 @@ if __name__ == "__main__":
                         outputs=lora_name,
                     )
 
-                # When a LoRA path is selected:
+                # When the LoRA button is clicked:
                 # - lock image model dropdown,
-                # - discard appended timestamp,
-                # - shift trigger words history,
-                # - unload any LoRA model,
-                # - load selected LoRA model.
-                lora_swap = lora_path.change(
-                    lambda: gr.update(interactive=False),
-                    outputs=model_select,
-                ).then(
+                # - prompt for a LoRA file,
+                # - validate the selection.
+                lora_swap_validated = (
+                    swap_lora_btn.click(
+                        lambda: gr.update(interactive=False),
+                        outputs=model_select,
+                    )
+                    .then(
+                        lambda: select_lora_file(t),
+                        outputs=lora_path,
+                    )
+                    .then(
+                        validate_lora_swap,
+                        inputs=lora_path,
+                    )
+                )
+
+                # If the LoRA selection was validated, shift trigger words
+                # history, unload any LoRA model then load selected LoRA model.
+                lora_swapped = lora_swap_validated.success(
                     lambda p, tw, m: [tw[1], swap_lora(p, m)],
                     inputs=[lora_path, trigger_words, model],
                     outputs=trigger_words,
-                    js="(p, tw, m) => [p.split('|')[0], tw, m]",
                 )
 
                 # On LoRA swap success:
@@ -718,7 +741,7 @@ if __name__ == "__main__":
                 # - update trigger word in prompt,
                 # - make LoRA row visible,
                 # - remember name of loaded LoRA.
-                lora_swap.success(
+                lora_swapped.success(
                     lambda: gr.update(interactive=True),
                     outputs=model_select,
                 ).then(
@@ -729,30 +752,46 @@ if __name__ == "__main__":
                     lambda: gr.update(visible=True),
                     outputs=lora_row,
                 ).then(
-                    lambda p: Path(p).stem,
+                    extract_lora_name,
                     inputs=lora_path,
                     outputs=lora_name,
                 ).then(
                     lambda: gr.Info(t("LoRA loaded"), duration=2),
                 )
 
-                # On LoRA swap failure:
+                # On cancelled/invalid LoRA selection:
                 # - release image model dropdown,
+                # - forget selected path.
+                lora_swap_validated.failure(
+                    lambda: gr.update(interactive=True),
+                    outputs=model_select,
+                ).then(
+                    lambda: None,
+                    outputs=lora_path,
+                )
+
+                # On failed LoRA swap:
                 # - unload any LoRA model,
                 # - remove trigger word from prompt,
                 # - empty trigger words history,
+                # - release image model dropdown,
                 # - make LoRA row invisible,
-                # - forget name of loaded LoRA.
-                lora_swap.failure(
-                    lambda: gr.update(interactive=True),
-                    outputs=model_select,
-                ).then(unload_lora).then(
+                # - forget path and name of loaded LoRA.
+                lora_swapped.failure(
+                    lambda: unload_lora(),
+                ).then(
                     remove_trigger_word,
                     inputs=[trigger_words, mm_prompt],
                     outputs=[trigger_words, mm_prompt],
                 ).then(
+                    lambda: gr.update(interactive=True),
+                    outputs=model_select,
+                ).then(
                     lambda: gr.update(visible=False),
                     outputs=lora_row,
+                ).then(
+                    lambda: None,
+                    outputs=lora_path,
                 ).then(
                     lambda: None,
                     outputs=lora_name,
@@ -840,7 +879,7 @@ if __name__ == "__main__":
                     )
                 )
 
-                # On model download failure:
+                # On failed model download:
                 # - reselect initial model,
                 # - release model dropdown.
                 model_download.failure(
@@ -1155,7 +1194,7 @@ if __name__ == "__main__":
             outputs=examples_column,
         )
 
-        # On generation failure: release the model dropdown, unless another
+        # On failed generation: release the model dropdown, unless another
         # blocking task (e.g. a model download) is still running and "owns" it.
         generation.failure(
             lambda: gr.update(interactive=not BlockingTask.is_running),
