@@ -27,7 +27,7 @@
     "LoRA file extension must be .safetensors": "L'extension du fichier LoRA doit être .safetensors",
     "This LoRA seems incompatible with": "Ce LoRA semble incompatible avec",
     "It might not work.": "Il pourrait ne pas fonctionner.",
-    "Failed to load LoRA, you may need to restart application.": "Échec du chargement du LoRA, vous devrez peut-être relancer l'application.",
+    "Failed to load LoRA.": "Échec du chargement du LoRA.",
     "LoRA loaded": "LoRA chargé",
     "LoRA Strength": "Force du LoRA",
     "Unload LoRA": "Décharger le LoRA",

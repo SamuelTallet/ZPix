@@ -5,7 +5,8 @@ from diffusers.models.transformers.transformer_krea2 import (
     Krea2Attention,
     apply_rotary_emb,
 )
-from diffusers.pipelines.krea2.pipeline_krea2 import Krea2Pipeline
+from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 
 
 class Krea2FlashAttnProcessor:
@@ -69,7 +70,9 @@ class Krea2FlashAttnProcessor:
         return attn.to_out[0](out)
 
 
-def install_krea2_flash_attn(pipe: Krea2Pipeline) -> None:
+def install_krea2_flash_attn(
+    pipe: DiffusionPipeline | ModularPipeline,
+) -> None:
     """Install a custom FA2 processor onto every K2 self-attention module.
 
     Raises:

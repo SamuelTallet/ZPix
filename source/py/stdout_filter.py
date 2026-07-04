@@ -15,4 +15,4 @@ def _filtered_write(s: str) -> int:
     return 0 if any(pattern in s for pattern in _SILENCED) else _stdout_write(s)
 
 
-sys.stdout.write = _filtered_write  # ty:ignore[invalid-assignment]
+sys.stdout.write = _filtered_write  # ty: ignore[invalid-assignment]

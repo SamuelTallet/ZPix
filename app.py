@@ -12,8 +12,10 @@ from time import time_ns
 
 import gradio as gr
 import torch
-from diffusers import ComponentsManager, DiffusionPipeline, ModularPipeline
 from diffusers.guiders import ClassifierFreeGuidance
+from diffusers.modular_pipelines.components_manager import ComponentsManager
+from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
@@ -30,15 +32,20 @@ from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
 
 from source.py.blocking_task import BlockingTask
-from source.py.custom_errors import EventAbort
 from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
 from source.py.image_model import ImageModel
 from source.py.image_models import download_model, find_model, get_models
 from source.py.krea2_flash import install_krea2_flash_attn
-from source.py.lora_model import LoraModel
-from source.py.lora_models import extract_lora_name, select_lora_file
+from source.py.lora_models import (
+    extract_lora_name,
+    select_lora_file,
+    set_lora_strength,
+    swap_lora,
+    unload_lora,
+    validate_lora_swap,
+)
 from source.py.os_abstract import open_with_default_app
 from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
@@ -81,7 +88,7 @@ metadata: dict[str, str] = {}
 models: list[ImageModel] = []
 """Available image models."""
 
-pipe: ModularPipeline | DiffusionPipeline | None = None
+pipe: ModularPipeline | DiffusionPipeline
 """Pipeline."""
 
 pipe_is_optimized: bool = False
@@ -186,14 +193,11 @@ def load_model(model: ImageModel) -> ImageModel:
         else:
             raise
 
-    # Enable INT8 MatMul for AMD, Intel ARC and Nvidia GPUs:
+    # Enable INT8 MatMul for AMD, Intel ARC and NVIDIA GPUs:
     if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):
-        pipe.transformer = apply_sdnq_options_to_model(
-            pipe.transformer, use_quantized_matmul=True
-        )
-        pipe.text_encoder = apply_sdnq_options_to_model(
-            pipe.text_encoder, use_quantized_matmul=True
-        )
+        apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)
+        apply_sdnq_options_to_model(pipe.text_encoder, use_quantized_matmul=True)
+
         # Not all models are compatible with FlashAttention:
         if model.family in ("Z-Image", "FLUX.2"):
             try:
@@ -237,89 +241,6 @@ def swap_model(model: ImageModel) -> ImageModel:
         return load_model(model)
 
 
-def swap_lora(path: Path, image_model: ImageModel) -> str | None:
-    """Swap or load a new LoRA model.
-
-    Args:
-        path: Path to a LoRA file.
-        image_model: Loaded image model.
-
-    Returns:
-        Trigger word of LoRA model.
-    """
-    lora = LoraModel(path)
-
-    try:
-        if lora.base_model() not in image_model.base_ids:
-            gr.Warning(
-                f"{t('This LoRA seems incompatible with')} {image_model.name}.<br>"
-                f"{t('It might not work.')}",
-                duration=5,
-            )
-    except Exception as e:
-        logging.warning(f"Can't check LoRA compatibility: {e}")
-
-    bfloat16_lora = lora.to_bf16()
-
-    # Workaround: Diffusers FLUX.2 LoRA converter doesn't handle .alpha keys.
-    if image_model.family == "FLUX.2":
-        bfloat16_lora = {
-            k: v for k, v in bfloat16_lora.items() if not k.endswith(".alpha")
-        }
-
-    try:
-        with BlockingTask.run(t("Please try again, a LoRA was loading.")):
-            pipe.unload_lora_weights()
-            pipe.load_lora_weights(bfloat16_lora, adapter_name="lora_1")
-    except Exception as error:
-        raise gr.Error(
-            t("Failed to load LoRA, you may need to restart application."),
-            duration=None,
-        ) from error
-
-    trigger_word = lora.trigger_word()
-
-    return trigger_word
-
-
-def validate_lora_swap(path: Path | None) -> None:
-    """Validate a LoRA selection before swapping.
-
-    Args:
-        path: Path to selected LoRA file, or None if selection was cancelled.
-
-    Raises:
-        EventAbort: If the user cancelled the file dialog.
-        gr.Error: If the file is not a *.safetensors, or a blocking task runs.
-    """
-    if path is None:
-        raise EventAbort("LoRA file selection cancelled.")
-
-    if path.suffix != ".safetensors":
-        raise gr.Error(
-            t("LoRA file extension must be .safetensors"),
-            duration=20,
-        )
-
-    if BlockingTask.is_running:
-        raise gr.Error(str(BlockingTask.message), duration=4)
-
-
-def set_lora_strength(strength: float):
-    """Set LoRA strength."""
-    adapters = pipe.get_list_adapters()
-
-    if "transformer" not in adapters or "lora_1" not in adapters["transformer"]:
-        raise gr.Error("No LoRA loaded.")
-
-    pipe.set_adapters("lora_1", strength)
-
-
-def unload_lora():
-    """Unload LoRA model."""
-    pipe.unload_lora_weights()
-
-
 def generate(
     model: ImageModel,
     mm_prompt: dict | None,
@@ -351,11 +272,8 @@ def generate(
         Tuple of (updated gallery, last image index, output paths, used seed).
 
     Raises:
-        gr.Error: If the pipeline is not loaded.
+        gr.Error: If no prompt was entered.
     """
-    if pipe is None:
-        raise gr.Error("Pipeline not loaded.")
-
     prompt: str = (mm_prompt or {}).get("text", "").strip()
 
     if not prompt:
@@ -394,14 +312,14 @@ def generate(
 
     with BlockingTask.run(t("Please try again shortly, an image is being generated.")):
         try:
-            image = pipe(**pipe_kwargs).images[0]
+            image = pipe(**pipe_kwargs).images[0]  # ty: ignore
         except UnicodeDecodeError:
             # A corrupted Triton cache can cause an UnicodeDecodeError.
             rmtree(Path.home() / ".triton", ignore_errors=True)
             gr.Warning(t("Cleared Triton cache as it may be corrupted."), duration=6)
 
             gr.Info(t("Regenerating same image..."), duration=8)
-            image = pipe(**pipe_kwargs).images[0]
+            image = pipe(**pipe_kwargs).images[0]  # ty: ignore
 
     # Prepare metadata to be saved in PNG text chunks.
     image_metadata = PngInfo()
@@ -678,7 +596,7 @@ if __name__ == "__main__":
                         value=1.0,
                     )
                     lora_strength.change(
-                        set_lora_strength,
+                        lambda strength: set_lora_strength(strength, pipe),
                         inputs=lora_strength,
                     )
                     unload_lora_btn = gr.Button(t("Unload LoRA"))
@@ -693,7 +611,7 @@ if __name__ == "__main__":
                         lambda: gr.update(interactive=False),
                         outputs=model_select,
                     ).then(
-                        unload_lora,
+                        lambda: unload_lora(pipe),
                     ).then(
                         lambda: gr.update(interactive=True),
                         outputs=model_select,
@@ -723,7 +641,7 @@ if __name__ == "__main__":
                         outputs=lora_path,
                     )
                     .then(
-                        validate_lora_swap,
+                        lambda p: validate_lora_swap(p, t),
                         inputs=lora_path,
                     )
                 )
@@ -731,7 +649,7 @@ if __name__ == "__main__":
                 # If the LoRA selection was validated, shift trigger words
                 # history, unload any LoRA model then load selected LoRA model.
                 lora_swapped = lora_swap_validated.success(
-                    lambda p, tw, m: [tw[1], swap_lora(p, m)],
+                    lambda p, tw, m: [tw[1], swap_lora(p, m, t, pipe)],
                     inputs=[lora_path, trigger_words, model],
                     outputs=trigger_words,
                 )
@@ -778,7 +696,7 @@ if __name__ == "__main__":
                 # - make LoRA row invisible,
                 # - forget path and name of loaded LoRA.
                 lora_swapped.failure(
-                    lambda: unload_lora(),
+                    lambda: unload_lora(pipe),
                 ).then(
                     remove_trigger_word,
                     inputs=[trigger_words, mm_prompt],
@@ -853,7 +771,7 @@ if __name__ == "__main__":
                         outputs=model_select,
                         show_progress="hidden",
                     )
-                    .then(unload_lora)
+                    .then(lambda: unload_lora(pipe))
                     .then(
                         remove_trigger_word,
                         inputs=[trigger_words, mm_prompt],
