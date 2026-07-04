@@ -359,6 +359,7 @@ def generate(
 if __name__ == "__main__":
     arg_parser = ArgumentParser()
     arg_parser.add_argument("--port", type=int, required=True)
+    arg_parser.add_argument("--in-browser", action="store_true", default=False)
     arg_parser.add_argument("--locale", type=str, required=False, default="en-US")
     args, _ = arg_parser.parse_known_args()
 
@@ -1136,6 +1137,7 @@ if __name__ == "__main__":
 
     app.launch(
         server_port=args.port,
+        inbrowser=args.in_browser,
         footer_links=["gradio"],  # Credit
         theme=get_theme(),
         css_paths=[

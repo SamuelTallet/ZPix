@@ -13,6 +13,8 @@ function Invoke-App {
     $uvArgs = @(
         "run", "app.py",
         "--port", $Port,
+        # No --in-browser arg here since on Windows
+        # the app is shown in a WebView2 window.
         "--locale", $locale
     )
 
