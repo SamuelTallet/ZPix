@@ -364,6 +364,7 @@ if __name__ == "__main__":
     args, _ = arg_parser.parse_known_args()
 
     with gr.Blocks(
+        title=f"{get_metadata('NAME')} {get_metadata('VERSION')}",
         fill_width=True,
         analytics_enabled=False,
     ) as app:
@@ -1138,8 +1139,9 @@ if __name__ == "__main__":
     app.launch(
         server_port=args.port,
         inbrowser=args.in_browser,
-        footer_links=["gradio"],  # Credit
+        favicon_path=assets_dir / "zpix_180.png",
         theme=get_theme(),
+        footer_links=["gradio"],  # Credit
         css_paths=[
             app_dir / "source" / "css" / "pac-loader.css",
             app_dir / "source" / "css" / "app.css",
