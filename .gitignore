@@ -4,8 +4,9 @@ __pycache__
 build
 cache
 temp
+tools/astral/uv*
 vcpkg_installed
 .tou_accepted
-*.dll
-*.exe
 DEBUG*
+*.dll
+ZPix.exe
