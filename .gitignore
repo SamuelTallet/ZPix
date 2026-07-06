@@ -3,6 +3,7 @@ __pycache__
 .venv
 build
 cache
+dist
 temp
 tools/astral/uv*
 vcpkg_installed

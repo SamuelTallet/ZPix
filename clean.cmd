@@ -27,6 +27,7 @@ rmdir /s /q "__pycache__" >nul 2>&1
 rmdir /s /q ".ruff_cache" >nul 2>&1
 rmdir /s /q ".venv" >nul 2>&1
 rmdir /s /q "build" >nul 2>&1
+rmdir /s /q "dist" >nul 2>&1
 rmdir /s /q "source\py\__pycache__" >nul 2>&1
 rmdir /s /q "temp" >nul 2>&1
 rmdir /s /q "vcpkg_installed" >nul 2>&1
