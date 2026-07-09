@@ -32,7 +32,7 @@ It depends on model used to generate image:
 
 - `Z-Image Turbo` and `FLUX.2 [klein] 4B` allow commercial use. See [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 - `Anima 1.0 Turbo 0.2` and `Anima Base 1.0` prohibit commercial use. See [CircleStone Labs Non-Commercial License 1.1](https://huggingface.co/circlestone-labs/Anima/blob/main/LICENSE.md) and [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/).
-- `Krea 2 Turbo` prohibit commercial use once revenue reaches a certain amount. See [Krea 2 Community License](https://www.krea.ai/krea-2-licensing).
+- `Krea 2 Turbo` requires a commercial licence once your revenue reaches a certain amount. See [Krea 2 Community License](https://www.krea.ai/krea-2-licensing).
 
 ## Does this application works offline?
 
