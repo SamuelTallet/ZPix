@@ -146,16 +146,21 @@ def get_theme():
 
 def warn_if_pipe_not_optimized():
     """Warn the user if the diffusion pipeline could not be optimized."""
-    if pipe_is_optimized:
-        return
+    if torch.backends.mps.is_available():
+        return  # Not applicable to Mac.
 
-    gr.Warning(
-        t("Image generation may be slow because diffusion pipeline is not optimized.")
-        + "<br>"
-        + t("Try upgrading your graphics card drivers, then reboot your PC and restart")
-        + f" {get_metadata('NAME')}.",
-        duration=None,  # Until user closes it.
-    )
+    if not pipe_is_optimized:
+        gr.Warning(
+            t(
+                "Image generation may be slow because diffusion pipeline is not optimized."
+            )
+            + "<br>"
+            + t(
+                "Try upgrading your graphics card drivers, then reboot your PC and restart"
+            )
+            + f" {get_metadata('NAME')}.",
+            duration=None,  # Until user closes it.
+        )
 
 
 def load_model(model: ImageModel) -> ImageModel:
@@ -193,7 +198,7 @@ def load_model(model: ImageModel) -> ImageModel:
         else:
             raise
 
-    # Enable INT8 MatMul for AMD, Intel ARC and NVIDIA GPUs:
+    # Enable INT8 MatMul for NVIDIA, AMD and Intel ARC GPUs:
     if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):
         apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)
         apply_sdnq_options_to_model(pipe.text_encoder, use_quantized_matmul=True)
@@ -221,10 +226,19 @@ def load_model(model: ImageModel) -> ImageModel:
     except RuntimeError as e:
         logging.warning(f"Can't apply memory format optimization: {e}")
 
-    if manager:  # Modular pipeline.
-        manager.enable_auto_cpu_offload()
-    else:
-        pipe.enable_sequential_cpu_offload()
+    # Offload to CPU (NVIDIA, AMD and Intel ARC GPUs):
+    if torch.cuda.is_available() or torch.xpu.is_available():
+        if manager:
+            manager.enable_auto_cpu_offload()
+        else:
+            pipe.enable_sequential_cpu_offload()
+    # Leverage Metal Performance Shaders (MPS) on Mac GPUs:
+    elif torch.backends.mps.is_available():
+        pipe.to("mps")
+
+        # To prevent swap and performance degradation...
+        if hasattr(pipe, "enable_attention_slicing"):
+            pipe.enable_attention_slicing()
 
     return model
 
@@ -362,6 +376,15 @@ if __name__ == "__main__":
     arg_parser.add_argument("--in-browser", action="store_true", default=False)
     arg_parser.add_argument("--locale", type=str, required=False, default="en-US")
     args, _ = arg_parser.parse_known_args()
+
+    if not (
+        torch.cuda.is_available()
+        or torch.xpu.is_available()
+        or torch.backends.mps.is_available()
+    ):
+        raise RuntimeError(
+            "PyTorch couldn't find an accelerator; try updating your GPU drivers."
+        )
 
     with gr.Blocks(
         title=f"{get_metadata('NAME')} {get_metadata('VERSION')}",
