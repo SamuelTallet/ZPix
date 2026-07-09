@@ -1162,7 +1162,7 @@ if __name__ == "__main__":
     app.launch(
         server_port=args.port,
         inbrowser=args.in_browser,
-        favicon_path=assets_dir / "zpix_180.png",
+        favicon_path=assets_dir / "favicon_180.png",
         theme=get_theme(),
         footer_links=["gradio"],  # Credit
         css_paths=[
