@@ -1,4 +1,5 @@
 # ZPix packaging script for Windows.
+
 $ErrorActionPreference = "Stop"
 
 $include = @(

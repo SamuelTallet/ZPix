@@ -1,3 +1,5 @@
+# ZPix building script for Windows.
+
 $ErrorActionPreference = 'Stop'
 
 # Load VS environment.

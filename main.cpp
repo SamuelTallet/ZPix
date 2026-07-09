@@ -1,3 +1,5 @@
+// ZPix launcher for Windows.
+
 #include <windows.h>
 #include <string>
 
