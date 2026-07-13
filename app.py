@@ -91,9 +91,6 @@ models: list[ImageModel] = []
 pipe: ModularPipeline | DiffusionPipeline
 """Pipeline."""
 
-pipe_is_optimized: bool = False
-"""Pipeline is optimized?"""
-
 output_dir = get_output_dir()
 """The folder where ZPix saves generated images."""
 
@@ -145,11 +142,11 @@ def get_theme():
 
 
 def warn_if_pipe_not_optimized():
-    """Warn the user if the diffusion pipeline could not be optimized."""
+    """Warn the user if the diffusion pipeline is not optimized."""
     if torch.backends.mps.is_available():
         return  # Not applicable to Mac.
 
-    if not pipe_is_optimized:
+    if not triton_is_available:
         gr.Warning(
             t(
                 "Image generation may be slow because diffusion pipeline is not optimized."
@@ -166,7 +163,6 @@ def warn_if_pipe_not_optimized():
 def load_model(model: ImageModel) -> ImageModel:
     """Load an image model pipeline."""
     global pipe
-    global pipe_is_optimized
 
     def create_pipe(
         model_id: str,
@@ -207,14 +203,12 @@ def load_model(model: ImageModel) -> ImageModel:
         if model.family in ("Z-Image", "FLUX.2"):
             try:
                 pipe.transformer.set_attention_backend("flash")
-                pipe_is_optimized = True
             except Exception as e:
                 pipe.transformer.reset_attention_backend()
                 logging.warning(f"FlashAttention is not available: {e}")
         elif model.family == "Krea 2":
             try:
                 install_krea2_flash_attn(pipe)
-                pipe_is_optimized = True
             except Exception as e:
                 pipe.transformer.reset_attention_backend()
                 logging.warning(f"FlashAttention is not available for Krea 2: {e}")
