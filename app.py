@@ -1,6 +1,7 @@
 """ZPix Gradio app."""
 
 # Based on https://huggingface.co/spaces/Tongyi-MAI/Z-Image-Turbo
+import gc
 import logging
 from argparse import ArgumentParser
 from os import environ
@@ -224,7 +225,23 @@ def fetch_model(model: ImageModel) -> None:
 
 def swap_model(model: ImageModel) -> ImageModel:
     """Swap an image model pipeline, blocking other critical tasks."""
+    global pipe
+
     with BlockingTask.run(t("Please wait, a model is being loaded.")):
+        # Break the hook <-> module reference cycles left by CPU offload.
+        if hasattr(pipe, "remove_all_hooks"):
+            pipe.remove_all_hooks()
+
+        # Drop the old pipeline before collecting, otherwise it stays alive
+        # and its VRAM makes the next auto CPU offload overly aggressive.
+        del pipe
+        gc.collect()
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif torch.xpu.is_available():
+            torch.xpu.empty_cache()
+
         return load_model(model)
 
 
