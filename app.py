@@ -3,7 +3,6 @@
 # Based on https://huggingface.co/spaces/Tongyi-MAI/Z-Image-Turbo
 import logging
 from argparse import ArgumentParser
-from json import load as load_json
 from os import environ
 from pathlib import Path
 from random import randint
@@ -50,6 +49,7 @@ from source.py.os_abstract import open_with_default_app
 from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
 from source.py.resolutions import get_aspects_and_resolutions, parse_resolution
+from source.py.translations import get_translate_func
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
@@ -79,9 +79,6 @@ assets_dir = app_dir / "assets"
 # Let's serve assets directly.
 gr.set_static_paths(paths=[assets_dir])
 
-translation: dict[str, str] = {}
-"""Translation."""
-
 metadata: dict[str, str] = {}
 """App metadata."""
 
@@ -93,24 +90,6 @@ pipe: ModularPipeline | DiffusionPipeline
 
 output_dir = get_output_dir()
 """The folder where ZPix saves generated images."""
-
-
-def load_translation(locale: str) -> None:
-    """Load translation for a given locale, if available."""
-    global translation
-
-    translation_file = app_dir / "translations" / f"{locale}.json"
-    if not translation_file.exists():
-        logging.warning(f"Translation for {locale} not found.")
-        return
-
-    with open(translation_file, "r", encoding="utf-8") as file:
-        translation = load_json(file)
-
-
-def t(string: str) -> str:
-    """Translate a string."""
-    return translation.get(string, string)
 
 
 def get_metadata(filename: str) -> str:
@@ -398,8 +377,8 @@ if __name__ == "__main__":
             default_aspect_ratio,
         ) = get_aspects_and_resolutions()
 
-        if args.locale != "en-US":
-            load_translation(args.locale)
+        t = get_translate_func(app_dir / "translations", args.locale)
+        """Translation function."""
 
         tou = TermsOfUse(app_dir / ".tou_accepted")
 
