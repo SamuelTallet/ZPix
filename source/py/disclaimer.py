@@ -1,7 +1,8 @@
 """Disclaimer helper."""
 
-from logging import warning
 from pathlib import Path
+
+from source.py.custom_logger import logger
 
 
 class TermsOfUse:
@@ -25,7 +26,7 @@ class TermsOfUse:
         try:
             self.accepted_file.write_text("by user")
         except Exception as e:
-            warning(f"Can't write {self.accepted_file}: {e}")
+            logger.warning(f"Can't write {self.accepted_file}: {e}")
             # Even on file write error, it's crucial to continue,
             # otherwise user won't be able to use app.
 

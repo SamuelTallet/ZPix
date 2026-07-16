@@ -1,10 +1,11 @@
 """Gallery images helpers."""
 
-from logging import warning
 from pathlib import Path
 from re import fullmatch
 
 import gradio as gr
+
+from source.py.custom_logger import logger
 
 
 def delete_image(
@@ -35,6 +36,6 @@ def delete_image(
         Path(output_file).unlink()
     except Exception as error:
         # Maybe image was deleted outside ZPix meanwhile.
-        warning(f"Can't delete image file: {error}")
+        logger.warning(f"Can't delete image file: {error}")
 
     return gr.update(value=images), new_index, output_paths

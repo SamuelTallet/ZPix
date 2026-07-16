@@ -1,7 +1,8 @@
 from collections.abc import Callable
 from json import load as load_json
-from logging import warning
 from pathlib import Path
+
+from source.py.custom_logger import logger
 
 
 def get_translate_func(
@@ -27,7 +28,7 @@ def get_translate_func(
             with open(translation_file, "r", encoding="utf-8") as file:
                 translation = load_json(file)
         else:
-            warning(f"Translation for {locale} not found.")
+            logger.warning(f"Translation for {locale} not found.")
 
     def translate(string: str) -> str:
         """Translate a string."""

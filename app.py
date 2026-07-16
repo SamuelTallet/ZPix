@@ -2,7 +2,6 @@
 
 # Based on https://huggingface.co/spaces/Tongyi-MAI/Z-Image-Turbo
 import gc
-import logging
 from argparse import ArgumentParser
 from os import environ
 from pathlib import Path
@@ -32,6 +31,7 @@ from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
 
 from source.py.blocking_task import BlockingTask
+from source.py.custom_logger import logger
 from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
@@ -54,8 +54,6 @@ from source.py.translations import get_translate_func
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
-
-logging.basicConfig(format="%(levelname)s: %(message)s")
 
 # Path to Triton cache directory
 # shortened by good measure to avoid too long path errors on Windows
@@ -167,46 +165,49 @@ def load_model(model: ImageModel) -> ImageModel:
         pipe, manager = create_pipe(model.id)
     except Exception:
         if model.backup_id:
-            logging.warning(
-                f"Can't load {model.id}, falling back to {model.backup_id}."
-            )
+            logger.warning(f"Can't load {model.id}, falling back to {model.backup_id}.")
             pipe, manager = create_pipe(model.backup_id)
         else:
             raise
 
-    # Enable INT8 MatMul for NVIDIA, AMD and Intel ARC GPUs:
+    # On NVIDIA, AMD & Intel ARC GPUs:
     if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):
-        apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)
-        apply_sdnq_options_to_model(pipe.text_encoder, use_quantized_matmul=True)
+        for component_name, component in pipe.components.items():
+            quantization_config = getattr(component, "quantization_config", None)
+            quant_method = getattr(quantization_config, "quant_method", None)
 
-        # Not all models are compatible with FlashAttention:
-        if model.family in ("Z-Image", "FLUX.2"):
+            if quant_method == "sdnq":
+                apply_sdnq_options_to_model(component, use_quantized_matmul=True)
+                logger.info(f"SDNQ Quantized MatMul enabled for {component_name}.")
+
+        if model.family in ("Z-Image", "FLUX", "FLUX.2"):
             try:
                 pipe.transformer.set_attention_backend("flash")
             except Exception as e:
                 pipe.transformer.reset_attention_backend()
-                logging.warning(f"FlashAttention is not available: {e}")
+                logger.warning(f"FlashAttention is not available: {e}")
         elif model.family == "Krea 2":
             try:
                 install_krea2_flash_attn(pipe)
             except Exception as e:
                 pipe.transformer.reset_attention_backend()
-                logging.warning(f"FlashAttention is not available for Krea 2: {e}")
+                logger.warning(f"FlashAttention is not available for Krea 2: {e}")
         else:
             pipe.transformer.set_attention_backend("native")
 
     try:
         pipe.vae.to(memory_format=torch.channels_last)
     except RuntimeError as e:
-        logging.warning(f"Can't apply memory format optimization: {e}")
+        logger.warning(f"Can't apply memory format optimization: {e}")
 
-    # Offload to CPU (NVIDIA, AMD and Intel ARC GPUs):
+    # On NVIDIA, AMD & Intel ARC GPUs:
     if torch.cuda.is_available() or torch.xpu.is_available():
         if manager:
             manager.enable_auto_cpu_offload()
         else:
             pipe.enable_sequential_cpu_offload()
-    # Leverage Metal Performance Shaders (MPS) on Mac GPUs:
+
+    # On Mac GPUs:
     elif torch.backends.mps.is_available():
         pipe.to("mps")
 

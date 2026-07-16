@@ -1,6 +1,5 @@
 """LoRA models management."""
 
-import logging
 from collections.abc import Callable
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 
 from source.py.blocking_task import BlockingTask
 from source.py.custom_errors import EventAbort
+from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.lora_model import LoraModel
 
@@ -93,7 +93,7 @@ def swap_lora(
                 duration=5,
             )
     except Exception as e:
-        logging.warning(f"Can't check LoRA compatibility: {e}")
+        logger.warning(f"Can't check LoRA compatibility: {e}")
 
     bfloat16_lora = lora.to_bf16()
 

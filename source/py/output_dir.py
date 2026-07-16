@@ -1,12 +1,13 @@
 """Output directory management."""
 
 from collections.abc import Callable
-from logging import warning
 from pathlib import Path
 
 import gradio as gr
 from crossfiledialog import choose_folder
 from platformdirs import user_pictures_path
+
+from source.py.custom_logger import logger
 
 
 def _output_dir_cfg() -> Path:
@@ -31,7 +32,7 @@ def get_output_dir() -> Path:
             output_dir = user_pictures_path() / "ZPix"
 
     except Exception as error:
-        warning(f"We'll use default output directory because: {error}")
+        logger.warning(f"We'll use default output directory because: {error}")
         output_dir = Path.home() / "Pictures" / "ZPix"
 
     return output_dir

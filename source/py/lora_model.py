@@ -1,9 +1,10 @@
 from json import JSONDecodeError, loads
-from logging import warning
 from pathlib import Path
 
 from safetensors import safe_open
 from torch import bfloat16
+
+from source.py.custom_logger import logger
 
 
 class LoraModel:
@@ -96,9 +97,9 @@ class LoraModel:
             if phrase := self.trigger_phrase():
                 return phrase
             else:
-                warning("LoRA trigger phrase not found or empty, trying tag...")
+                logger.warning("LoRA trigger phrase not found or empty, trying tag...")
         except Exception as error:
-            warning(error)
+            logger.warning(error)
 
         # Then most frequent tag.
         tag = None
@@ -106,15 +107,15 @@ class LoraModel:
         try:
             tag = self.frequent_tag()
         except Exception as error:
-            warning(error)
+            logger.warning(error)
             return None
 
         if not tag:
-            warning("LoRA tag not found or empty")
+            logger.warning("LoRA tag not found or empty")
             return None
 
         if len(tag) > 32:
-            warning("A long LoRA tag (> 32 chars) is unlikely a trigger word")
+            logger.warning("A long LoRA tag (> 32 chars) is unlikely a trigger word")
             return None
 
         return tag
