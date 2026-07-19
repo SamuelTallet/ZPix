@@ -22,6 +22,7 @@
     "Drag an image here to recover its prompt": "Faites glisser une image ici pour retrouver son prompt",
     "Reference Images": "Images de référence",
     "Drag an image here to add it as a reference": "Faites glisser une image ici pour l'ajouter comme référence",
+    "Reference Strength": "Force de la référence",
     "Select a LoRA file to load in ZPix": "Sélectionnez un fichier LoRA à charger dans ZPix",
     "LoRA file": "Fichier LoRA",
     "LoRA file extension must be .safetensors": "L'extension du fichier LoRA doit être .safetensors",

@@ -9,7 +9,7 @@
             "cfg": 0.0
         },
         "base_ids": ["zimage"],
-        "features": ["text-to-image"]
+        "features": ["text-to-image", "image-to-image"]
     },
     {
         "id": "Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic",
@@ -45,7 +45,7 @@
             "cfg": 1.0
         },
         "base_ids": ["anima"],
-        "features": ["text-to-image"]
+        "features": ["text-to-image", "image-to-image"]
     },
     {
         "id": "OzzyGT/Anima-base-v1.0_sdnq_dynamic_8bit",
@@ -57,7 +57,7 @@
             "cfg": 4.0
         },
         "base_ids": ["anima"],
-        "features": ["text-to-image"]
+        "features": ["text-to-image", "image-to-image"]
     },
     {
         "id": "SamuelTallet/Krea-2-Turbo-SDNQ-3bit-dynamic-hadamard256",

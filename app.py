@@ -48,6 +48,7 @@ from source.py.lora_models import (
 )
 from source.py.os_abstract import open_with_default_app
 from source.py.output_dir import change_output_dir, get_output_dir
+from source.py.pipe_features import pipe_supports_strength
 from source.py.prompt_extract import extract_update_prompt
 from source.py.resolutions import get_aspects_and_resolutions, parse_resolution
 from source.py.translations import get_translate_func
@@ -250,6 +251,7 @@ def generate(
     model: ImageModel,
     mm_prompt: dict | None,
     reference_images: dict | None,
+    ref_image_strength: float,
     resolution: str,
     seed: int,
     random_seed: bool,
@@ -265,6 +267,7 @@ def generate(
         model: Loaded image model.
         mm_prompt: Multimodal dictionary containing possibly a text prompt.
         reference_images: List of reference images.
+        ref_image_strength: How much of the reference image to keep.
         resolution: Resolution string (e.g. "1024x1024").
         seed: Seed value for reproducibility.
         random_seed: Ignore seed argument and generate a seed?
@@ -299,7 +302,6 @@ def generate(
     }
 
     if model.has_modular_pipeline():
-        # Modular pipelines configure CFG through a guider component.
         if "guider" in pipe.component_names:
             pipe.update_components(
                 guider=ClassifierFreeGuidance(guidance_scale=max(float(cfg), 1.0))
@@ -313,7 +315,18 @@ def generate(
         and reference_images.get("files")
         and "image-to-image" in model.features
     ):
-        pipe_kwargs["image"] = [Image.open(f) for f in reference_images["files"]]
+        ref_images_files = reference_images["files"]
+
+        if pipe_supports_strength(pipe):
+            # Strength-based pipelines (e.g. Anima, Z-Image) condition on a
+            # single reference image via the batch dimension.
+            if len(ref_images_files) >= 2:
+                logger.warning("This pipeline doesn't support multiple ref images.")
+
+            pipe_kwargs["image"] = Image.open(ref_images_files[0])
+            pipe_kwargs["strength"] = 1 - ref_image_strength
+        else:
+            pipe_kwargs["image"] = [Image.open(f) for f in ref_images_files]
 
     with BlockingTask.run(t("Please try again shortly, an image is being generated.")):
         try:
@@ -564,6 +577,15 @@ if __name__ == "__main__":
                             let zone = document.getElementById("reference-images")
                             zone.title = "{t("Drag an image here to add it as a reference")}"
                         """,
+                    )
+
+                with gr.Row() as ref_image_strength_row:
+                    ref_image_strength = gr.Slider(
+                        label=t("Reference Strength"),
+                        minimum=0.1,
+                        maximum=0.9,
+                        step=0.1,
+                        value=0.5,
                     )
 
                 with gr.Row():
@@ -844,8 +866,8 @@ if __name__ == "__main__":
                 )
 
                 # On model load success:
-                # - display reference images if model supports them,
-                # - update settings according to model,
+                # - display reference images block and settings if model supports them,
+                # - update other settings according to model,
                 # - release model dropdown.
                 model_load.success(
                     lambda image_model: (
@@ -856,11 +878,12 @@ if __name__ == "__main__":
                                 else ["hidden"]
                             )
                         ),
+                        gr.update(visible=pipe_supports_strength(pipe)),
                         gr.update(value=image_model.default.steps),
                         gr.update(value=image_model.default.cfg),
                     ),
                     inputs=model,
-                    outputs=[reference_images_row, steps, cfg],
+                    outputs=[reference_images_row, ref_image_strength_row, steps, cfg],
                     show_progress="hidden",
                 ).then(
                     lambda: gr.update(interactive=True),
@@ -1086,6 +1109,7 @@ if __name__ == "__main__":
                 model,
                 mm_prompt,
                 reference_images,
+                ref_image_strength,
                 resolution,
                 seed,
                 random_seed,
@@ -1149,6 +1173,12 @@ if __name__ == "__main__":
         # Collapse the LoRA settings row, which starts visible only so its
         # slider mounts and lays out at load time (see lora_row above).
         app.load(lambda: gr.update(visible=False), outputs=lora_row)
+
+        # Same for the reference image strength slider.
+        app.load(
+            lambda: gr.update(visible=pipe_supports_strength(pipe)),
+            outputs=ref_image_strength_row,
+        )
 
     app.launch(
         server_port=args.port,

@@ -1,7 +1,7 @@
 # Below are the common dependencies for the ZPix Gradio app.
 # See start.ps1 and start.sh for platform and accelerator specific dependencies.
 
-diffusers @ https://github.com/huggingface/diffusers/archive/a7166cee37e9f7f912e60968f55a136dd599bc8d.zip
+diffusers @ https://github.com/huggingface/diffusers/archive/48fadcc9460efa0e51886ae3b382b8cdd590379a.zip
 peft==0.19.1
 sdnq==0.2.0
 platformdirs==4.10.0
