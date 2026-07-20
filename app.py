@@ -641,7 +641,9 @@ if __name__ == "__main__":
                     unload_lora_btn = gr.Button(t("Unload LoRA"))
 
                     # On "Unload LoRA" button click:
+                    # - lock image model dropdown,
                     # - unload LoRA model,
+                    # - release image model dropdown, unless it's owned,
                     # - remove trigger word from prompt,
                     # - empty trigger words history,
                     # - make LoRA row invisible,
@@ -652,7 +654,7 @@ if __name__ == "__main__":
                     ).then(
                         lambda: unload_lora(pipe),
                     ).then(
-                        lambda: gr.update(interactive=True),
+                        lambda: gr.update(interactive=not BlockingTask.is_running),
                         outputs=model_select,
                     ).then(
                         remove_trigger_word,
@@ -694,12 +696,12 @@ if __name__ == "__main__":
                 )
 
                 # On LoRA swap success:
-                # - release image model dropdown,
+                # - release image model dropdown, unless it's owned,
                 # - update trigger word in prompt,
                 # - make LoRA row visible,
                 # - remember name of loaded LoRA.
                 lora_swapped.success(
-                    lambda: gr.update(interactive=True),
+                    lambda: gr.update(interactive=not BlockingTask.is_running),
                     outputs=model_select,
                 ).then(
                     update_trigger_word,
@@ -717,10 +719,10 @@ if __name__ == "__main__":
                 )
 
                 # On cancelled/invalid LoRA selection:
-                # - release image model dropdown,
+                # - release image model dropdown, unless it's owned,
                 # - forget selected path.
                 lora_swap_validated.failure(
-                    lambda: gr.update(interactive=True),
+                    lambda: gr.update(interactive=not BlockingTask.is_running),
                     outputs=model_select,
                 ).then(
                     lambda: None,
@@ -731,7 +733,7 @@ if __name__ == "__main__":
                 # - unload any LoRA model,
                 # - remove trigger word from prompt,
                 # - empty trigger words history,
-                # - release image model dropdown,
+                # - release image model dropdown, unless it's owned,
                 # - make LoRA row invisible,
                 # - forget path and name of loaded LoRA.
                 lora_swapped.failure(
@@ -741,7 +743,7 @@ if __name__ == "__main__":
                     inputs=[trigger_words, mm_prompt],
                     outputs=[trigger_words, mm_prompt],
                 ).then(
-                    lambda: gr.update(interactive=True),
+                    lambda: gr.update(interactive=not BlockingTask.is_running),
                     outputs=model_select,
                 ).then(
                     lambda: gr.update(visible=False),
@@ -796,7 +798,31 @@ if __name__ == "__main__":
                     outputs=[show_seed_state, seed_row],
                 )
 
-                # When a new image model is selected:
+                def validate_model_swap():
+                    """Validate that a model swap can start, blocking otherwise.
+
+                    Raises:
+                        gr.Error: If a blocking task (e.g. a LoRA load) is running.
+                    """
+                    if BlockingTask.is_running:
+                        raise gr.Error(str(BlockingTask.message), duration=6)
+
+                # When a new image model is selected, validate the swap.
+                model_swap_validated = model_select.change(
+                    validate_model_swap,
+                    show_progress="hidden",
+                )
+
+                # On rejected model swap, resync the dropdown with the model
+                # actually loaded, otherwise it keeps showing the rejected one.
+                model_swap_validated.failure(
+                    lambda loaded_model: gr.update(value=loaded_model.id),
+                    inputs=model,
+                    outputs=model_select,
+                    show_progress="hidden",
+                )
+
+                # If the swap was validated:
                 # - lock model dropdown,
                 # - unload LoRA model,
                 # - remove trigger word from prompt,
@@ -805,7 +831,7 @@ if __name__ == "__main__":
                 # - forget name of loaded LoRA,
                 # - download selected model...
                 model_download = (
-                    model_select.change(
+                    model_swap_validated.success(
                         lambda: gr.update(interactive=False),
                         outputs=model_select,
                         show_progress="hidden",
@@ -836,19 +862,6 @@ if __name__ == "__main__":
                     )
                 )
 
-                # On failed model download:
-                # - reselect initial model,
-                # - release model dropdown.
-                model_download.failure(
-                    lambda: gr.Info(f"{t('Fallback to')} {initial_model.name}.")
-                ).then(
-                    lambda: gr.update(
-                        value=initial_model.id,  # This triggers a change.
-                        interactive=True,
-                    ),
-                    outputs=model_select,
-                )
-
                 # On model download success: load model...
                 model_load = model_download.success(
                     lambda: gr.update(
@@ -865,6 +878,20 @@ if __name__ == "__main__":
                     outputs=model,
                     show_progress="hidden",
                 )
+
+                # On failed model download or load:
+                # - reselect initial model,
+                # - release model dropdown.
+                for model_phase in (model_download, model_load):
+                    model_phase.failure(
+                        lambda: gr.Info(f"{t('Fallback to')} {initial_model.name}.")
+                    ).then(
+                        lambda: gr.update(
+                            value=initial_model.id,  # This triggers a change.
+                            interactive=True,
+                        ),
+                        outputs=model_select,
+                    )
 
                 # On model load success:
                 # - display reference images block and settings if model supports them,
