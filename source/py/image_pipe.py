@@ -141,25 +141,23 @@ class ImagePipeline:
         return blocks is not None and "strength" in blocks.input_names
 
     @staticmethod
-    def warn_if_not_optimized(t: Callable[[str], str], app_name: str) -> None:
+    def warn_if_not_optimizable(t: Callable[[str], str]) -> None:
         """Warn the user if the pipeline can't be optimized.
 
         Args:
             t: Translation function.
-            app_name: Name of this application.
         """
         if torch.backends.mps.is_available():
-            return  # Not applicable to Mac.
+            return  # Not applicable as Triton is not available on Mac.
 
         if not triton_is_available:
             gr.Warning(
                 t(
-                    "Image generation may be slow because diffusion pipeline is not optimized."
+                    "Image generation may be slow because the diffusion pipeline can't be optimized."
                 )
                 + "<br>"
                 + t(
-                    "Try upgrading your graphics card drivers, then reboot your PC and restart"
-                )
-                + f" {app_name}.",
+                    "Try upgrading your graphics card drivers, then reboot your PC and restart ZPix."
+                ),
                 duration=None,  # Until user closes it.
             )

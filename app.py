@@ -906,7 +906,7 @@ if __name__ == "__main__":
             outputs=model_select,
         )
 
-        app.load(lambda: ImagePipeline.warn_if_not_optimized(t, get_metadata("NAME")))
+        app.load(lambda: ImagePipeline.warn_if_not_optimizable(t))
 
         app.load(
             lambda: check_for_updates(
