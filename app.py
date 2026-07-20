@@ -1,22 +1,14 @@
 """ZPix Gradio app."""
 
 # Based on https://huggingface.co/spaces/Tongyi-MAI/Z-Image-Turbo
-import gc
 from argparse import ArgumentParser
+from functools import partial
 from os import environ
 from pathlib import Path
-from random import randint
 from shutil import rmtree
-from time import time_ns
 
 import gradio as gr
 import torch
-from diffusers.guiders import ClassifierFreeGuidance
-from diffusers.modular_pipelines.components_manager import ComponentsManager
-from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from PIL import Image
-from PIL.PngImagePlugin import PngInfo
 
 import source.py.stdout_filter  # noqa: F401
 
@@ -27,17 +19,15 @@ if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (12, 0):
     environ.setdefault("SDNQ_USE_TENSORWISE_FP8_MM", "1")
 
 from sdnq import SDNQConfig  # noqa: F401
-from sdnq.common import use_torch_compile as triton_is_available
-from sdnq.loader import apply_sdnq_options_to_model
 
 from source.py.blocking_task import BlockingTask
-from source.py.custom_logger import logger
 from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
+from source.py.image_gen import generate
 from source.py.image_model import ImageModel
 from source.py.image_models import download_model, find_model, get_models
-from source.py.krea2_flash import install_krea2_flash_attn
+from source.py.image_pipe import ImagePipeline
 from source.py.lora_models import (
     extract_lora_name,
     select_lora_file,
@@ -48,9 +38,8 @@ from source.py.lora_models import (
 )
 from source.py.os_abstract import open_with_default_app
 from source.py.output_dir import change_output_dir, get_output_dir
-from source.py.pipe_features import pipe_supports_strength
 from source.py.prompt_extract import extract_update_prompt
-from source.py.resolutions import get_aspects_and_resolutions, parse_resolution
+from source.py.resolutions import get_aspects_and_resolutions
 from source.py.translations import get_translate_func
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
@@ -85,9 +74,6 @@ metadata: dict[str, str] = {}
 models: list[ImageModel] = []
 """Available image models."""
 
-pipe: ModularPipeline | DiffusionPipeline
-"""Pipeline."""
-
 output_dir = get_output_dir()
 """The folder where ZPix saves generated images."""
 
@@ -120,259 +106,10 @@ def get_theme():
     )
 
 
-def warn_if_pipe_not_optimized():
-    """Warn the user if the diffusion pipeline is not optimized."""
-    if torch.backends.mps.is_available():
-        return  # Not applicable to Mac.
-
-    if not triton_is_available:
-        gr.Warning(
-            t(
-                "Image generation may be slow because diffusion pipeline is not optimized."
-            )
-            + "<br>"
-            + t(
-                "Try upgrading your graphics card drivers, then reboot your PC and restart"
-            )
-            + f" {get_metadata('NAME')}.",
-            duration=None,  # Until user closes it.
-        )
-
-
-def load_model(model: ImageModel) -> ImageModel:
-    """Load an image model pipeline."""
-    global pipe
-
-    def create_pipe(
-        model_id: str,
-    ) -> tuple[DiffusionPipeline | ModularPipeline, ComponentsManager | None]:
-        """Create a standard pipeline or a modular one."""
-        if not model.has_modular_pipeline():
-            return DiffusionPipeline.from_pretrained(
-                model_id,
-                torch_dtype=torch.bfloat16,
-            ), None
-
-        components_manager = ComponentsManager()
-        modular_pipeline = ModularPipeline.from_pretrained(
-            model_id,
-            components_manager=components_manager,
-        )
-        modular_pipeline.load_components(torch_dtype=torch.bfloat16)
-
-        return modular_pipeline, components_manager
-
-    try:
-        pipe, manager = create_pipe(model.id)
-    except Exception:
-        if model.backup_id:
-            logger.warning(f"Can't load {model.id}, falling back to {model.backup_id}.")
-            pipe, manager = create_pipe(model.backup_id)
-        else:
-            raise
-
-    # On NVIDIA, AMD & Intel ARC GPUs:
-    if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):
-        for component_name, component in pipe.components.items():
-            quantization_config = getattr(component, "quantization_config", None)
-            quant_method = getattr(quantization_config, "quant_method", None)
-
-            if quant_method == "sdnq":
-                apply_sdnq_options_to_model(component, use_quantized_matmul=True)
-                logger.info(f"SDNQ Quantized MatMul enabled for {component_name}.")
-
-        if model.family in ("Z-Image", "FLUX", "FLUX.2"):
-            try:
-                pipe.transformer.set_attention_backend("flash")
-            except Exception as e:
-                pipe.transformer.reset_attention_backend()
-                logger.warning(f"FlashAttention is not available: {e}")
-        elif model.family == "Krea 2":
-            try:
-                install_krea2_flash_attn(pipe)
-            except Exception as e:
-                pipe.transformer.reset_attention_backend()
-                logger.warning(f"FlashAttention is not available for Krea 2: {e}")
-        else:
-            pipe.transformer.set_attention_backend("native")
-
-    try:
-        pipe.vae.to(memory_format=torch.channels_last)
-    except RuntimeError as e:
-        logger.warning(f"Can't apply memory format optimization: {e}")
-
-    # On NVIDIA, AMD & Intel ARC GPUs:
-    if torch.cuda.is_available() or torch.xpu.is_available():
-        if manager:
-            manager.enable_auto_cpu_offload()
-        else:
-            pipe.enable_sequential_cpu_offload()
-
-    # On Mac GPUs:
-    elif torch.backends.mps.is_available():
-        pipe.to("mps")
-
-        # To prevent swap and performance degradation...
-        if hasattr(pipe, "enable_attention_slicing"):
-            pipe.enable_attention_slicing()
-
-    return model
-
-
 def fetch_model(model: ImageModel) -> None:
     """Fetch an image model, blocking other critical tasks."""
     with BlockingTask.run(t("Please wait, a model is being downloaded.")):
         download_model(model, t)
-
-
-def swap_model(model: ImageModel) -> ImageModel:
-    """Swap an image model pipeline, blocking other critical tasks."""
-    global pipe
-
-    with BlockingTask.run(t("Please wait, a model is being loaded.")):
-        # Break the hook <-> module reference cycles left by CPU offload.
-        if hasattr(pipe, "remove_all_hooks"):
-            pipe.remove_all_hooks()
-
-        # Drop the old pipeline before collecting, otherwise it stays alive
-        # and its VRAM makes the next auto CPU offload overly aggressive.
-        del pipe
-        gc.collect()
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        elif torch.xpu.is_available():
-            torch.xpu.empty_cache()
-
-        return load_model(model)
-
-
-def generate(
-    model: ImageModel,
-    mm_prompt: dict | None,
-    reference_images: dict | None,
-    ref_image_strength: float,
-    resolution: str,
-    seed: int,
-    random_seed: bool,
-    steps: int,
-    cfg: float,
-    gallery_images: list[tuple] | None,
-    images_paths: dict[str, str],
-    lora_name: str | None,
-) -> tuple[list[tuple], int, dict[str, str], int]:
-    """Generate an image and possibly a seed, and update gallery.
-
-    Args:
-        model: Loaded image model.
-        mm_prompt: Multimodal dictionary containing possibly a text prompt.
-        reference_images: List of reference images.
-        ref_image_strength: How much of the reference image to keep.
-        resolution: Resolution string (e.g. "1024x1024").
-        seed: Seed value for reproducibility.
-        random_seed: Ignore seed argument and generate a seed?
-        steps: Number of inference (denoising) steps.
-        cfg: Classifier-free guidance scale.
-        gallery_images: Existing gallery images to append to.
-        images_paths: Dictionary mapping images IDs to output paths.
-        lora_name: Name of loaded LoRA (e.g. "Anime_20").
-    Returns:
-        Tuple of (updated gallery, last image index, output paths, used seed).
-
-    Raises:
-        gr.Error
-    """
-    prompt: str = (mm_prompt or {}).get("text", "").strip()
-
-    if model.family == "Anima" and not prompt:
-        # Anima models can produce NSFW images even if not asked for.
-        raise gr.Error(
-            t("Please enter a prompt to generate an image."),
-            duration=4,
-        )
-
-    width, height = parse_resolution(resolution)
-    used_seed = randint(1, 1000000) if random_seed else int(seed)
-
-    pipe_kwargs = {
-        "prompt": prompt,
-        "height": height,
-        "width": width,
-        "num_inference_steps": int(steps),
-        "generator": torch.manual_seed(used_seed),
-    }
-
-    if model.has_modular_pipeline():
-        if "guider" in pipe.component_names:
-            pipe.update_components(
-                guider=ClassifierFreeGuidance(guidance_scale=max(float(cfg), 1.0))
-            )
-    else:
-        # Standard pipelines take CFG as a call argument.
-        pipe_kwargs["guidance_scale"] = float(cfg)
-
-    if (
-        reference_images
-        and reference_images.get("files")
-        and "image-to-image" in model.features
-    ):
-        ref_images_files = reference_images["files"]
-
-        if pipe_supports_strength(pipe):
-            # Strength-based pipelines (e.g. Anima, Z-Image) condition on a
-            # single reference image via the batch dimension.
-            if len(ref_images_files) >= 2:
-                logger.warning("This pipeline doesn't support multiple ref images.")
-
-            pipe_kwargs["image"] = Image.open(ref_images_files[0])
-            pipe_kwargs["strength"] = 1 - ref_image_strength
-        else:
-            pipe_kwargs["image"] = [Image.open(f) for f in ref_images_files]
-
-    with BlockingTask.run(t("Please try again shortly, an image is being generated.")):
-        try:
-            image = pipe(**pipe_kwargs).images[0]  # ty: ignore
-        except UnicodeDecodeError:
-            # A corrupted Triton cache can cause an UnicodeDecodeError.
-            rmtree(Path.home() / ".triton", ignore_errors=True)
-            gr.Warning(t("Cleared Triton cache as it may be corrupted."), duration=6)
-
-            gr.Info(t("Regenerating same image..."), duration=8)
-            image = pipe(**pipe_kwargs).images[0]  # ty: ignore
-
-    # Prepare metadata to be saved in PNG text chunks.
-    image_metadata = PngInfo()
-    image_metadata.add_text("model", model.id)
-    image_metadata.add_itxt("prompt", prompt)
-    image_metadata.add_text("seed", str(used_seed))
-    image_metadata.add_text("steps", str(steps))
-    image_metadata.add_text("cfg", str(cfg))
-
-    # Milliseconds precision is more than enough to avoid filename collision.
-    image_id = str(time_ns() // 1_000_000)
-    image_basename = f"image_{image_id}.png"
-
-    # LoRA name (if provided) is included in output path.
-    if lora_name:
-        image_file = output_dir / lora_name / image_basename
-    else:
-        image_file = output_dir / image_basename
-
-    # Ensure output directory exists.
-    image_file.parent.mkdir(parents=True, exist_ok=True)
-
-    image.save(image_file, pnginfo=image_metadata)
-
-    # Output path is recorded for a possible later deletion.
-    images_paths[image_id] = str(image_file)
-
-    if gallery_images is None:
-        gallery_images = []
-
-    # Prompt is added as image caption.
-    gallery_images.append((image_file, prompt))
-
-    return gallery_images, len(gallery_images) - 1, images_paths, used_seed
 
 
 if __name__ == "__main__":
@@ -391,13 +128,19 @@ if __name__ == "__main__":
             "PyTorch couldn't find an accelerator; try updating your GPU drivers."
         )
 
+    t = get_translate_func(app_dir / "translations", args.locale)
+    """Translation function."""
+
+    image_pipe = ImagePipeline()
+    """Image pipeline."""
+
     with gr.Blocks(
         title=f"{get_metadata('NAME')} {get_metadata('VERSION')}",
         fill_width=True,
         analytics_enabled=False,
     ) as app:
         models = get_models(app_dir / "data" / "curated_models.json")
-        initial_model = load_model(models[0])
+        initial_model = image_pipe.load(models[0])
 
         model = gr.State(value=initial_model)
         """Loaded image model."""
@@ -408,9 +151,6 @@ if __name__ == "__main__":
             aspect_ratio_choices,
             default_aspect_ratio,
         ) = get_aspects_and_resolutions()
-
-        t = get_translate_func(app_dir / "translations", args.locale)
-        """Translation function."""
 
         tou = TermsOfUse(app_dir / ".tou_accepted")
 
@@ -635,7 +375,7 @@ if __name__ == "__main__":
                         value=1.0,
                     )
                     lora_strength.change(
-                        lambda strength: set_lora_strength(strength, pipe),
+                        lambda strength: set_lora_strength(strength, image_pipe.instance),
                         inputs=lora_strength,
                     )
                     unload_lora_btn = gr.Button(t("Unload LoRA"))
@@ -652,7 +392,7 @@ if __name__ == "__main__":
                         lambda: gr.update(interactive=False),
                         outputs=model_select,
                     ).then(
-                        lambda: unload_lora(pipe),
+                        lambda: unload_lora(image_pipe.instance),
                     ).then(
                         lambda: gr.update(interactive=not BlockingTask.is_running),
                         outputs=model_select,
@@ -690,7 +430,7 @@ if __name__ == "__main__":
                 # If the LoRA selection was validated, shift trigger words
                 # history, unload any LoRA model then load selected LoRA model.
                 lora_swapped = lora_swap_validated.success(
-                    lambda p, tw, m: [tw[1], swap_lora(p, m, t, pipe)],
+                    lambda p, tw, m: [tw[1], swap_lora(p, m, t, image_pipe.instance)],
                     inputs=[lora_path, trigger_words, model],
                     outputs=trigger_words,
                 )
@@ -737,7 +477,7 @@ if __name__ == "__main__":
                 # - make LoRA row invisible,
                 # - forget path and name of loaded LoRA.
                 lora_swapped.failure(
-                    lambda: unload_lora(pipe),
+                    lambda: unload_lora(image_pipe.instance),
                 ).then(
                     remove_trigger_word,
                     inputs=[trigger_words, mm_prompt],
@@ -836,7 +576,7 @@ if __name__ == "__main__":
                         outputs=model_select,
                         show_progress="hidden",
                     )
-                    .then(lambda: unload_lora(pipe))
+                    .then(lambda: unload_lora(image_pipe.instance))
                     .then(
                         remove_trigger_word,
                         inputs=[trigger_words, mm_prompt],
@@ -873,7 +613,7 @@ if __name__ == "__main__":
                     outputs=model_status,
                     show_progress="hidden",
                 ).then(
-                    lambda model_id: swap_model(find_model(model_id, models)),
+                    lambda model_id: image_pipe.swap(find_model(model_id, models), t),
                     inputs=model_select,
                     outputs=model,
                     show_progress="hidden",
@@ -906,7 +646,7 @@ if __name__ == "__main__":
                                 else ["hidden"]
                             )
                         ),
-                        gr.update(visible=pipe_supports_strength(pipe)),
+                        gr.update(visible=image_pipe.supports_strength()),
                         gr.update(value=image_model.default.steps),
                         gr.update(value=image_model.default.cfg),
                     ),
@@ -1132,7 +872,7 @@ if __name__ == "__main__":
 
         # Once UI is setup: generate image.
         generation = ui_setup_for_generation.success(
-            generate,
+            partial(generate, image_pipe, output_dir, t),
             inputs=[
                 model,
                 mm_prompt,
@@ -1187,7 +927,9 @@ if __name__ == "__main__":
             outputs=model_select,
         )
 
-        app.load(warn_if_pipe_not_optimized)
+        app.load(
+            lambda: ImagePipeline.warn_if_not_optimized(t, get_metadata("NAME"))
+        )
 
         app.load(
             lambda: check_for_updates(
@@ -1204,7 +946,7 @@ if __name__ == "__main__":
 
         # Same for the reference image strength slider.
         app.load(
-            lambda: gr.update(visible=pipe_supports_strength(pipe)),
+            lambda: gr.update(visible=image_pipe.supports_strength()),
             outputs=ref_image_strength_row,
         )
 
