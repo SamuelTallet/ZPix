@@ -10,8 +10,6 @@ from shutil import rmtree
 import gradio as gr
 import torch
 
-import source.py.stdout_filter  # noqa: F401
-
 # Force tensorwise FP8 matmul kernels as a fallback on hardware that lacks
 # native row-wise FP8 support, such as consumer NVIDIA Blackwell cards.
 # This must run before importing SDNQ, which reads the variable at import time.
