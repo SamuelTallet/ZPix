@@ -26,7 +26,6 @@ from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
 from source.py.image_gen import generate
-from source.py.image_model import ImageModel
 from source.py.image_models import fetch_model, find_model, get_models
 from source.py.image_pipe import ImagePipeline
 from source.py.lora_models import (
@@ -46,55 +45,15 @@ from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
 
-# Path to Triton cache directory
-# shortened by good measure to avoid too long path errors on Windows
-# even if this has been fixed recently.
-environ["TRITON_CACHE_DIR"] = str(Path.home() / ".triton")
-
-app_dir = Path(__file__).parent
-"""App directory."""
-
-# As we store temp files created by Gradio in this app' subfolder
-# we can remove them without worry about impacting other Gradio apps.
-gradio_temp_dir = app_dir / "temp" / "GradioApp"
-environ["GRADIO_TEMP_DIR"] = str(gradio_temp_dir)
-
-# This temp directory may hold files existing also in output directory
-# so we clear it on each app run to save space.
-rmtree(gradio_temp_dir, ignore_errors=True)
-
-assets_dir = app_dir / "assets"
-"""Assets directory."""
-
-# Let's serve assets directly.
-gr.set_static_paths(paths=[assets_dir])
-
-metadata: dict[str, str] = {}
-"""App metadata."""
-
-models: list[ImageModel] = []
-"""Available image models."""
-
-output_dir = get_output_dir()
-"""The folder where ZPix saves generated images."""
-
-
-def get_metadata(filename: str) -> str:
-    """Get metadata."""
-    if filename not in metadata:
-        file = app_dir / "metadata" / filename
-        metadata[filename] = file.read_text()
-
-    return metadata[filename]
-
-
 if __name__ == "__main__":
+    # Parse args.
     arg_parser = ArgumentParser()
     arg_parser.add_argument("--port", type=int, required=True)
     arg_parser.add_argument("--in-browser", action="store_true", default=False)
     arg_parser.add_argument("--locale", type=str, required=False, default="en-US")
     args, _ = arg_parser.parse_known_args()
 
+    # Check GPU.
     if not (
         torch.cuda.is_available()
         or torch.xpu.is_available()
@@ -104,18 +63,62 @@ if __name__ == "__main__":
             "PyTorch couldn't find an accelerator; try updating your GPU drivers."
         )
 
+    # Set paths.
+
+    # Path to Triton cache directory
+    # shortened by good measure to avoid too long path errors on Windows
+    # even if this has been fixed recently.
+    environ["TRITON_CACHE_DIR"] = str(Path.home() / ".triton")
+
+    app_dir = Path(__file__).parent
+    """App directory."""
+
+    # As we store temp files created by Gradio in this app' subfolder
+    # we can remove them without worry about impacting other Gradio apps.
+    gradio_temp_dir = app_dir / "temp" / "GradioApp"
+    environ["GRADIO_TEMP_DIR"] = str(gradio_temp_dir)
+
+    # This temp directory may hold files existing also in output directory
+    # so we clear it on each app run to save space.
+    rmtree(gradio_temp_dir, ignore_errors=True)
+
+    assets_dir = app_dir / "assets"
+    """Assets directory."""
+
+    # Let's serve assets directly.
+    gr.set_static_paths(paths=[assets_dir])
+
+    output_dir = get_output_dir()
+    """The folder where ZPix saves generated images."""
+
+    # Add helpers.
+
     t = get_translate_func(app_dir / "translations", args.locale)
     """Translation function."""
 
-    image_pipe = ImagePipeline()
-    """Image pipeline."""
+    metadata: dict[str, str] = {}
+    """App metadata."""
 
+    def get_metadata(filename: str) -> str:
+        """Get metadata."""
+        if filename not in metadata:
+            file = app_dir / "metadata" / filename
+            metadata[filename] = file.read_text()
+
+        return metadata[filename]
+
+    # Build UI.
     with gr.Blocks(
         title=f"{get_metadata('NAME')} {get_metadata('VERSION')}",
         fill_width=True,
         analytics_enabled=False,
     ) as app:
         models = get_models(app_dir / "data" / "curated_models.json")
+        """Available image models."""
+
+        image_pipe = ImagePipeline()
+        """Current image pipeline."""
+
         initial_model = image_pipe.load(models[0])
 
         model = gr.State(value=initial_model)
@@ -351,7 +354,9 @@ if __name__ == "__main__":
                         value=1.0,
                     )
                     lora_strength.change(
-                        lambda strength: set_lora_strength(strength, image_pipe.instance),
+                        lambda strength: set_lora_strength(
+                            strength, image_pipe.instance
+                        ),
                         inputs=lora_strength,
                     )
                     unload_lora_btn = gr.Button(t("Unload LoRA"))
@@ -903,9 +908,7 @@ if __name__ == "__main__":
             outputs=model_select,
         )
 
-        app.load(
-            lambda: ImagePipeline.warn_if_not_optimized(t, get_metadata("NAME"))
-        )
+        app.load(lambda: ImagePipeline.warn_if_not_optimized(t, get_metadata("NAME")))
 
         app.load(
             lambda: check_for_updates(
