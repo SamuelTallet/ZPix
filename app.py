@@ -21,6 +21,7 @@ if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (12, 0):
 from sdnq import SDNQConfig  # noqa: F401
 
 from source.py.blocking_task import BlockingTask
+from source.py.custom_theme import get_theme
 from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
@@ -85,25 +86,6 @@ def get_metadata(filename: str) -> str:
         metadata[filename] = file.read_text()
 
     return metadata[filename]
-
-
-def get_theme():
-    """Get customized theme."""
-    return gr.themes.Base(
-        primary_hue=gr.themes.Color(
-            c50="#f7f6ff",
-            c100="#efedff",
-            c200="#d8d2ff",
-            c300="#c0b7ff",
-            c400="#a192ff",
-            c500="#624aff",
-            c600="#5843e6",
-            c700="#4534b3",
-            c800="#312580",
-            c900="#1d164d",
-            c950="#0a071a",
-        )
-    )
 
 
 def fetch_model(model: ImageModel) -> None:
