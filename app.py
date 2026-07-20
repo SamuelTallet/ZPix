@@ -280,11 +280,12 @@ def generate(
         Tuple of (updated gallery, last image index, output paths, used seed).
 
     Raises:
-        gr.Error: If no prompt was entered.
+        gr.Error
     """
     prompt: str = (mm_prompt or {}).get("text", "").strip()
 
-    if not prompt:
+    if model.family == "Anima" and not prompt:
+        # Anima models can produce NSFW images even if not asked for.
         raise gr.Error(
             t("Please enter a prompt to generate an image."),
             duration=4,
