@@ -7,6 +7,7 @@ import gradio as gr
 from huggingface_hub import snapshot_download
 from pydantic import TypeAdapter
 
+from .blocking_task import BlockingTask
 from .image_model import ImageModel
 
 
@@ -46,3 +47,9 @@ def download_model(model: ImageModel, t: Callable[[str], str]) -> None:
             raise gr.Error(
                 t("Can't download model {id}, no backup available.").format(id=model.id)
             )
+
+
+def fetch_model(model: ImageModel, t: Callable[[str], str]) -> None:
+    """Fetch an image model, blocking other critical tasks."""
+    with BlockingTask.run(t("Please wait, a model is being downloaded.")):
+        download_model(model, t)

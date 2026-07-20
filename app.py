@@ -27,7 +27,7 @@ from source.py.ex_prompts import get_example_prompts
 from source.py.gallery_images import delete_image
 from source.py.image_gen import generate
 from source.py.image_model import ImageModel
-from source.py.image_models import download_model, find_model, get_models
+from source.py.image_models import fetch_model, find_model, get_models
 from source.py.image_pipe import ImagePipeline
 from source.py.lora_models import (
     extract_lora_name,
@@ -86,12 +86,6 @@ def get_metadata(filename: str) -> str:
         metadata[filename] = file.read_text()
 
     return metadata[filename]
-
-
-def fetch_model(model: ImageModel) -> None:
-    """Fetch an image model, blocking other critical tasks."""
-    with BlockingTask.run(t("Please wait, a model is being downloaded.")):
-        download_model(model, t)
 
 
 if __name__ == "__main__":
@@ -579,7 +573,7 @@ if __name__ == "__main__":
                         show_progress="hidden",
                     )
                     .then(
-                        lambda model_id: fetch_model(find_model(model_id, models)),
+                        lambda model_id: fetch_model(find_model(model_id, models), t),
                         inputs=model_select,
                     )
                 )
