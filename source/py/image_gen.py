@@ -8,7 +8,6 @@ from time import time_ns
 
 import gradio as gr
 import torch
-from diffusers.guiders import ClassifierFreeGuidance
 from PIL import Image, ImageOps
 from PIL.PngImagePlugin import PngInfo
 
@@ -85,8 +84,9 @@ def generate(
 
     if model.has_modular_pipeline():
         if "guider" in pipe.component_names:
+            guider_spec = pipe.get_component_spec("guider")
             pipe.update_components(
-                guider=ClassifierFreeGuidance(guidance_scale=max(float(cfg), 1.0))
+                guider=guider_spec.create(guidance_scale=max(float(cfg), 1.0))
             )
     else:
         # Standard pipelines take CFG as a call argument.
