@@ -107,6 +107,11 @@
     padding: 4px;
 }
 
+/* Ignore the hover forwarded by the block label to the Copy button */
+#used-prompt .icon-button:hover:not(:has(:hover)) {
+    background: var(--bg-color);
+}
+
 #used-prompt .custom-button { /* Reuse button */
     height: stretch;
     background-image: url("/gradio_api/file=assets/cycle_for_light.svg");
