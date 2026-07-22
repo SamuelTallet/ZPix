@@ -37,6 +37,7 @@ from source.py.lora_models import (
 from source.py.os_abstract import open_with_default_app
 from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
+from source.py.ref_images import show_ref_image_strength
 from source.py.resolutions import get_aspects_and_resolutions
 from source.py.translations import get_translate_func
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
@@ -305,6 +306,13 @@ if __name__ == "__main__":
                         step=0.1,
                         value=0.5,
                     )
+
+                reference_images.change(
+                    partial(show_ref_image_strength, image_pipe),
+                    inputs=reference_images,
+                    outputs=ref_image_strength_row,
+                    show_progress="hidden",
+                )
 
                 with gr.Row():
                     aspect_ratio = gr.Dropdown(
@@ -617,7 +625,7 @@ if __name__ == "__main__":
                 # - update other settings according to model,
                 # - release model dropdown.
                 model_load.success(
-                    lambda image_model: (
+                    lambda image_model, ref_images: (
                         gr.update(
                             elem_classes=(
                                 []
@@ -625,11 +633,11 @@ if __name__ == "__main__":
                                 else ["hidden"]
                             )
                         ),
-                        gr.update(visible=image_pipe.supports_strength()),
+                        show_ref_image_strength(image_pipe, ref_images),
                         gr.update(value=image_model.default.steps),
                         gr.update(value=image_model.default.cfg),
                     ),
-                    inputs=model,
+                    inputs=[model, reference_images],
                     outputs=[reference_images_row, ref_image_strength_row, steps, cfg],
                     show_progress="hidden",
                 ).then(
@@ -921,11 +929,9 @@ if __name__ == "__main__":
         # slider mounts and lays out at load time (see lora_row above).
         app.load(lambda: gr.update(visible=False), outputs=lora_row)
 
-        # Same for the reference image strength slider.
-        app.load(
-            lambda: gr.update(visible=image_pipe.supports_strength()),
-            outputs=ref_image_strength_row,
-        )
+        # Same for the reference image strength slider, which stays collapsed
+        # until a reference image is added (see reference_images.change above).
+        app.load(lambda: gr.update(visible=False), outputs=ref_image_strength_row)
 
     app.launch(
         server_port=args.port,
