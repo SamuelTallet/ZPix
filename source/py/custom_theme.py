@@ -16,5 +16,7 @@ def get_theme() -> gr.themes.Base:
             c800="#312580",
             c900="#1d164d",
             c950="#0a071a",
-        )
+        ),
+        font="sans-serif",
+        font_mono="sans-serif",
     )
