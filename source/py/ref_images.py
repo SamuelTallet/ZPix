@@ -1,8 +1,25 @@
 """Reference images."""
 
 import gradio as gr
+from PIL import Image, ImageOps
 
 from source.py.image_pipe import ImagePipeline
+from source.py.image_utilities import to_rgb
+
+
+def normalize_ref_image(file: str) -> Image.Image:
+    """Normalize a reference image file.
+
+    Args:
+        file: Path to the reference image.
+
+    Returns:
+        An upright RGB image.
+    """
+    image = Image.open(file)
+    ImageOps.exif_transpose(image, in_place=True)
+
+    return to_rgb(image)
 
 
 def show_ref_image_strength(

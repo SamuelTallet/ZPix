@@ -8,14 +8,13 @@ from time import time_ns
 
 import gradio as gr
 import torch
-from PIL import Image, ImageOps
 from PIL.PngImagePlugin import PngInfo
 
 from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.image_pipe import ImagePipeline
-from source.py.image_utilities import to_rgb
+from source.py.ref_images import normalize_ref_image
 from source.py.resolutions import parse_resolution
 
 
@@ -98,12 +97,6 @@ def generate(
         and "image-to-image" in model.features
     ):
         ref_images_files = reference_images["files"]
-
-        def normalize_ref_image(file):
-            """Normalize a reference image file."""
-            image = Image.open(file)
-            ImageOps.exif_transpose(image, in_place=True)
-            return to_rgb(image)
 
         if image_pipe.supports_strength():
             # Strength-based pipelines (e.g. Anima, Z-Image) condition on a
