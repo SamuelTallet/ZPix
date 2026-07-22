@@ -9,13 +9,14 @@ from time import time_ns
 import gradio as gr
 import torch
 from diffusers.guiders import ClassifierFreeGuidance
-from PIL import Image
+from PIL import Image, ImageOps
 from PIL.PngImagePlugin import PngInfo
 
 from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.image_pipe import ImagePipeline
+from source.py.image_utilities import to_rgb
 from source.py.resolutions import parse_resolution
 
 
@@ -98,16 +99,22 @@ def generate(
     ):
         ref_images_files = reference_images["files"]
 
+        def normalize_ref_image(file):
+            """Normalize a reference image file."""
+            image = Image.open(file)
+            ImageOps.exif_transpose(image, in_place=True)
+            return to_rgb(image)
+
         if image_pipe.supports_strength():
             # Strength-based pipelines (e.g. Anima, Z-Image) condition on a
             # single reference image via the batch dimension.
             if len(ref_images_files) >= 2:
                 logger.warning("This pipeline doesn't support multiple ref images.")
 
-            pipe_kwargs["image"] = Image.open(ref_images_files[0])
+            pipe_kwargs["image"] = normalize_ref_image(ref_images_files[0])
             pipe_kwargs["strength"] = 1 - ref_image_strength
         else:
-            pipe_kwargs["image"] = [Image.open(f) for f in ref_images_files]
+            pipe_kwargs["image"] = [normalize_ref_image(f) for f in ref_images_files]
 
     with BlockingTask.run(t("Please try again shortly, an image is being generated.")):
         try:
