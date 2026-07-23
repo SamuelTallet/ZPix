@@ -4,16 +4,15 @@ from collections.abc import Callable
 from pathlib import Path
 from random import randint
 from shutil import rmtree
-from time import time_ns
 
 import gradio as gr
 import torch
-from PIL.PngImagePlugin import PngInfo
 
 from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.image_pipe import ImagePipeline
+from source.py.output_image import OutputImage
 from source.py.ref_images import normalize_ref_image
 from source.py.resolutions import parse_resolution
 
@@ -52,7 +51,7 @@ def generate(
         cfg: Classifier-free guidance scale.
         gallery_images: Existing gallery images to append to.
         images_paths: Dictionary mapping images IDs to output paths.
-        lora_name: Name of loaded LoRA (e.g. "Anime_20").
+        lora_name: Name of loaded LoRA (e.g. "Retro_Anime").
     Returns:
         Tuple of (updated gallery, last image index, output paths, used seed).
 
@@ -120,36 +119,17 @@ def generate(
             gr.Info(t("Regenerating same image..."), duration=8)
             image = pipe(**pipe_kwargs).images[0]  # ty: ignore
 
-    # Prepare metadata to be saved in PNG text chunks.
-    image_metadata = PngInfo()
-    image_metadata.add_text("model", model.id)
-    image_metadata.add_itxt("prompt", prompt)
-    image_metadata.add_text("seed", str(used_seed))
-    image_metadata.add_text("steps", str(steps))
-    image_metadata.add_text("cfg", str(cfg))
-
-    # Milliseconds precision is more than enough to avoid filename collision.
-    image_id = str(time_ns() // 1_000_000)
-    image_basename = f"image_{image_id}.png"
-
-    # LoRA name (if provided) is included in output path.
-    if lora_name:
-        image_file = output_dir / lora_name / image_basename
-    else:
-        image_file = output_dir / image_basename
-
-    # Ensure output directory exists.
-    image_file.parent.mkdir(parents=True, exist_ok=True)
-
-    image.save(image_file, pnginfo=image_metadata)
+    output_image = OutputImage(image, output_dir, lora_name)
+    output_image.embed_settings(model, prompt, used_seed, steps, cfg)
+    output_image.save()
 
     # Output path is recorded for a possible later deletion.
-    images_paths[image_id] = str(image_file)
+    images_paths[output_image.id] = str(output_image.path)
 
     if gallery_images is None:
         gallery_images = []
 
     # Prompt is added as image caption.
-    gallery_images.append((image_file, prompt))
+    gallery_images.append((output_image.path, prompt))
 
     return gallery_images, len(gallery_images) - 1, images_paths, used_seed

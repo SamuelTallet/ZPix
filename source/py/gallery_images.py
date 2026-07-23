@@ -25,7 +25,7 @@ def delete_image(
     new_index = min(index, len(images) - 1) if images else None
 
     try:
-        # Image filename follows a pattern, see generate()
+        # Image filename follows a pattern, see OutputImage()
         path_match = fullmatch(r"image_(\d+)", Path(temp_file).stem)
 
         if not path_match:
