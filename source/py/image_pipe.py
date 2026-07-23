@@ -148,9 +148,16 @@ class ImagePipeline:
             t: Translation function.
         """
         if torch.backends.mps.is_available():
-            return  # Not applicable as Triton is not available on Mac.
+            return  # The checks below do not apply to Mac.
 
-        if not triton_is_available:
+        try:
+            from flash_attn import flash_attn_func  # noqa: F401
+
+            flash_is_available = True
+        except Exception:
+            flash_is_available = False
+
+        if not triton_is_available or not flash_is_available:
             gr.Warning(
                 t(
                     "Image generation may be slow because the diffusion pipeline can't be optimized."
