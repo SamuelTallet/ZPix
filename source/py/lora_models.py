@@ -64,7 +64,7 @@ def swap_lora(
     path: Path,
     image_model: ImageModel,
     t: Callable[[str], str],
-    pipe: DiffusionPipeline | ModularPipeline,
+    pipe: DiffusionPipeline | ModularPipeline | None,
 ) -> str | None:
     """Swap or load a new LoRA model.
 
@@ -120,7 +120,7 @@ def swap_lora(
 
 def set_lora_strength(
     strength: float,
-    pipe: DiffusionPipeline | ModularPipeline,
+    pipe: DiffusionPipeline | ModularPipeline | None,
 ):
     """Set the strength of the loaded LoRA adapter.
 
@@ -143,7 +143,7 @@ def set_lora_strength(
     pipe.set_adapters("lora_1", strength)
 
 
-def unload_lora(pipe: DiffusionPipeline | ModularPipeline):
+def unload_lora(pipe: DiffusionPipeline | ModularPipeline | None):
     """Unload all LoRA weights from the pipeline.
 
     Args:

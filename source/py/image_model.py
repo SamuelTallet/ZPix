@@ -57,6 +57,7 @@ class ImageModel(BaseModel):
             "ERNIE-Image",
             "FLUX",
             "FLUX.2",
+            "Krea 2",
             "Qwen-Image",
             "SD3",
             "SDXL",

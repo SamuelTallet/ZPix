@@ -5,9 +5,15 @@ from collections.abc import Callable
 
 import gradio as gr
 import torch
-from diffusers.modular_pipelines.components_manager import ComponentsManager
+from accelerate import cpu_offload
+from accelerate.hooks import remove_hook_from_module
+from diffusers.modular_pipelines.components_manager import (
+    AutoOffloadStrategy,
+    custom_offload_with_hook,
+)
 from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.utils.torch_utils import get_device
 from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
 
@@ -16,43 +22,41 @@ from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.krea2_flash import install_krea2_flash_attn
 
+MEMORY_RESERVE_MARGIN = 3 * 1024**3
+"""GPU memory kept free, in bytes, for the activations of the running component."""
+
 
 class ImagePipeline:
     """An image pipeline."""
 
     def __init__(self):
-        self.instance: ModularPipeline | DiffusionPipeline
+        self.instance: ModularPipeline | DiffusionPipeline | None = None
+        """Loaded pipeline, `None` during a swap."""
 
     def load(self, model: ImageModel) -> ImageModel:
         """Load an image model pipeline."""
 
-        def create_pipe(
-            model_id: str,
-        ) -> tuple[DiffusionPipeline | ModularPipeline, ComponentsManager | None]:
+        def create_pipe(model_id: str) -> DiffusionPipeline | ModularPipeline:
             """Create a standard pipeline or a modular one."""
             if not model.has_modular_pipeline():
                 return DiffusionPipeline.from_pretrained(
                     model_id,
-                    torch_dtype=torch.bfloat16,
-                ), None
+                    dtype=torch.bfloat16,
+                )
 
-            components_manager = ComponentsManager()
-            modular_pipeline = ModularPipeline.from_pretrained(
-                model_id,
-                components_manager=components_manager,
-            )
-            modular_pipeline.load_components(torch_dtype=torch.bfloat16)
+            modular_pipeline = ModularPipeline.from_pretrained(model_id)
+            modular_pipeline.load_components(dtype=torch.bfloat16)
 
-            return modular_pipeline, components_manager
+            return modular_pipeline
 
         try:
-            self.instance, manager = create_pipe(model.id)
+            self.instance = create_pipe(model.id)
         except Exception:
             if model.backup_id:
                 logger.warning(
                     f"Can't load {model.id}, falling back to {model.backup_id}."
                 )
-                self.instance, manager = create_pipe(model.backup_id)
+                self.instance = create_pipe(model.backup_id)
             else:
                 raise
 
@@ -90,10 +94,7 @@ class ImagePipeline:
 
         # On NVIDIA, AMD & Intel ARC GPUs:
         if torch.cuda.is_available() or torch.xpu.is_available():
-            if manager:
-                manager.enable_auto_cpu_offload()
-            else:
-                self.instance.enable_sequential_cpu_offload()
+            self.offload_to_cpu()
 
         # On Mac GPUs:
         elif torch.backends.mps.is_available():
@@ -105,6 +106,79 @@ class ImagePipeline:
 
         return model
 
+    def offload_to_cpu(self) -> None:
+        """Offload the pipeline weights to CPU, keeping on GPU what fits."""
+        if self.instance is None:
+            return
+
+        if isinstance(self.instance, DiffusionPipeline):
+            self.instance.enable_sequential_cpu_offload()
+            return
+
+        # A modular pipeline has no offload helper: replicate the auto CPU offload
+        # of its components manager, which can't be used as is because it hooks
+        # every component, including those too large to stay on the GPU.
+        device = torch.device(get_device())
+
+        if device.index is None:
+            device = torch.device(f"{device.type}:0")
+
+        device_module = getattr(torch, device.type, torch.cuda)
+        total_memory = device_module.mem_get_info(device.index)[1]
+
+        offload_strategy = AutoOffloadStrategy(
+            memory_reserve_margin=MEMORY_RESERVE_MARGIN
+        )
+
+        hooks = []
+
+        for name, component in self.instance.components.items():
+            if not isinstance(component, torch.nn.Module):
+                continue
+
+            footprint = getattr(component, "get_memory_footprint", None)
+            fits_on_gpu = (
+                footprint is not None
+                and footprint() + MEMORY_RESERVE_MARGIN <= total_memory
+            )
+
+            # Moving such a component as a whole would saturate the GPU: stream its
+            # weights one submodule at a time, and never elect it for eviction.
+            if not fits_on_gpu:
+                cpu_offload(
+                    component,
+                    device,
+                    offload_buffers=len(component._parameters) > 0,
+                )
+                logger.warning(
+                    f"{name} ({footprint() / 1024**3:.1f}GB) is too large "
+                    "for this GPU: streaming it."
+                    if footprint
+                    else f"Can't size {name}: streaming it."
+                )
+                continue
+
+            hooks.append(
+                custom_offload_with_hook(
+                    name, component, device, offload_strategy=offload_strategy
+                )
+            )
+
+        # Let each component evict its siblings when the GPU runs short.
+        for hook in hooks:
+            for other_hook in hooks:
+                if other_hook is not hook:
+                    hook.add_other_hook(other_hook)
+
+    def remove_hooks(self) -> None:
+        """Break the reference cycles left by CPU offload."""
+        if self.instance is None:
+            return
+
+        for component in self.instance.components.values():
+            if isinstance(component, torch.nn.Module):
+                remove_hook_from_module(component, recurse=True)
+
     def swap(self, model: ImageModel, t: Callable[[str], str]) -> ImageModel:
         """Swap an image model pipeline, blocking other critical tasks.
 
@@ -113,13 +187,11 @@ class ImagePipeline:
             t: Translation function.
         """
         with BlockingTask.run(t("Please wait, a model is being loaded.")):
-            # Break the hook <-> module reference cycles left by CPU offload.
-            if hasattr(self.instance, "remove_all_hooks"):
-                self.instance.remove_all_hooks()
+            self.remove_hooks()
 
             # Drop the old pipeline before collecting, otherwise it stays alive
             # and its VRAM makes the next auto CPU offload overly aggressive.
-            del self.instance
+            self.instance = None
             gc.collect()
 
             if torch.cuda.is_available():
@@ -134,8 +206,8 @@ class ImagePipeline:
 
         Returns:
             `True` for strength-based image-to-image pipelines (e.g. Anima, Z-Image),
-            `False` for conditioning-based edit models (e.g. FLUX.2 [klein])
-            and for text-to-image only pipelines.
+            `False` for conditioning-based edit models (e.g. FLUX.2 [klein]),
+            for text-to-image only pipelines, and during a swap.
         """
         blocks = getattr(self.instance, "blocks", None)
         return blocks is not None and "strength" in blocks.input_names

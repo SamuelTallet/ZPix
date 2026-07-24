@@ -60,6 +60,12 @@ def generate(
     """
     pipe = image_pipe.instance
 
+    if pipe is None:
+        raise gr.Error(
+            t("Please wait, a model is being loaded."),
+            duration=4,
+        )
+
     prompt: str = (mm_prompt or {}).get("text", "").strip()
 
     if model.family == "Anima" and not prompt:
