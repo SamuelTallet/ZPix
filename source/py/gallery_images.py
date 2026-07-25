@@ -19,7 +19,7 @@ def delete_image(
         Tuple of (updated gallery, new selected index, updated output paths).
     """
     if not images or index is None:
-        raise Exception("Gallery is empty or no image was selected")
+        raise ValueError("Gallery is empty or no image was selected")
 
     temp_file, _caption = images.pop(index)
     new_index = min(index, len(images) - 1) if images else None
@@ -29,12 +29,12 @@ def delete_image(
         path_match = fullmatch(r"image_(\d+)", Path(temp_file).stem)
 
         if not path_match:
-            raise Exception("Path mismatch")
+            raise ValueError("Path mismatch")
 
         image_id = path_match.group(1)
         output_file = output_paths.pop(image_id)
         Path(output_file).unlink()
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         # Maybe image was deleted outside ZPix meanwhile.
         logger.warning(f"Can't delete image file: {error}")
 

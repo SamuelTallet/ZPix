@@ -32,14 +32,14 @@ def download_model(model: ImageModel, t: Callable[[str], str]) -> None:
     """
     try:
         snapshot_download(model.id)
-    except Exception:
+    except Exception:  # noqa: BLE001
         if model.backup_id:
             gr.Warning(
                 t("Can't download {id}, let's use backup model...").format(id=model.id)
             )
             try:
                 snapshot_download(model.backup_id)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 raise gr.Error(
                     t("Can't download backup model {id}.").format(id=model.backup_id)
                 )

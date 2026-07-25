@@ -25,7 +25,7 @@ class TermsOfUse:
         """Accept Terms of Use."""
         try:
             self.accepted_file.write_text("by user")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Can't write {self.accepted_file}: {e}")
             # Even on file write error, it's crucial to continue,
             # otherwise user won't be able to use app.

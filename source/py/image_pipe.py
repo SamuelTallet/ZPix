@@ -75,13 +75,13 @@ class ImagePipeline:
             if model.family in ("Z-Image", "FLUX", "FLUX.2"):
                 try:
                     self.instance.transformer.set_attention_backend("flash")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     self.instance.transformer.reset_attention_backend()
                     logger.warning(f"FlashAttention is not available: {e}")
             elif model.family == "Krea 2":
                 try:
                     install_krea2_flash_attn(self.instance)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     self.instance.transformer.reset_attention_backend()
                     logger.warning(f"FlashAttention is not available for Krea 2: {e}")
             else:
@@ -226,7 +226,7 @@ class ImagePipeline:
             from flash_attn import flash_attn_func  # noqa: F401
 
             flash_is_available = True
-        except Exception:
+        except Exception:  # noqa: BLE001
             flash_is_available = False
 
         if not triton_is_available or not flash_is_available:

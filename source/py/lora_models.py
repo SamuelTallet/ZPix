@@ -92,7 +92,7 @@ def swap_lora(
                 f"{t('It might not work.')}",
                 duration=5,
             )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Can't check LoRA compatibility: {e}")
 
     bfloat16_lora = lora.to_bf16()

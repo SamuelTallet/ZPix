@@ -21,7 +21,7 @@ class LoraModel:
 
         with safe_open(path, framework="pt") as file:
             self.metadata = file.metadata()
-            for key in file.keys():
+            for key in file.keys():  # noqa: SIM118
                 self.state[key] = file.get_tensor(key)
 
     def base_model(self) -> str | None:
@@ -98,7 +98,7 @@ class LoraModel:
                 return phrase
             else:
                 logger.warning("LoRA trigger phrase not found or empty, trying tag...")
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             logger.warning(error)
 
         # Then most frequent tag.
@@ -106,7 +106,7 @@ class LoraModel:
 
         try:
             tag = self.frequent_tag()
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001
             logger.warning(error)
             return None
 

@@ -31,7 +31,7 @@ def get_output_dir() -> Path:
         else:
             output_dir = user_pictures_path() / "ZPix"
 
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         logger.warning(f"We'll use default output directory because: {error}")
         output_dir = Path.home() / "Pictures" / "ZPix"
 

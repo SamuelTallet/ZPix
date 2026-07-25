@@ -802,22 +802,24 @@ if __name__ == "__main__":
                 """,
             )
 
-        with gr.Row(
-            visible=not tou.accepted(),
-            elem_id="tou-row",
-        ) as tou_row:
-            with gr.Column(elem_id="tou-card"):
-                gr.Markdown(f"### {t('Terms of Use')}")
-                gr.Markdown(t(get_metadata("TERMS_OF_USE")))
-                agree_tou_btn = gr.Button(
-                    t("I agree"),
-                    variant="primary",
-                )
+        with (
+            gr.Row(
+                visible=not tou.accepted(),
+                elem_id="tou-row",
+            ) as tou_row,
+            gr.Column(elem_id="tou-card"),
+        ):
+            gr.Markdown(f"### {t('Terms of Use')}")
+            gr.Markdown(t(get_metadata("TERMS_OF_USE")))
+            agree_tou_btn = gr.Button(
+                t("I agree"),
+                variant="primary",
+            )
 
-                agree_tou_btn.click(tou.accept).then(
-                    lambda: (gr.update(visible=False), gr.update(elem_classes=[])),
-                    outputs=[tou_row, ui_row],
-                )
+            agree_tou_btn.click(tou.accept).then(
+                lambda: (gr.update(visible=False), gr.update(elem_classes=[])),
+                outputs=[tou_row, ui_row],
+            )
 
         def update_resolution_choices(_aspect_ratio):
             resolution_choices = resolutions_by_aspect.get(
