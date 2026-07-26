@@ -10,7 +10,7 @@ set(COPYRIGHT "Copyright 2026, ${DEVELOPER}")
 project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 
-include(resources/resources.cmake)
+include(resources/windows/resources.cmake)
 
 file(GLOB_RECURSE SOURCES "source/cpp/*.cpp")
 
