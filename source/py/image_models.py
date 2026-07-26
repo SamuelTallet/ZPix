@@ -7,8 +7,8 @@ import gradio as gr
 from huggingface_hub import snapshot_download
 from pydantic import TypeAdapter
 
-from .blocking_task import BlockingTask
-from .image_model import ImageModel
+from source.py.blocking_task import BlockingTask
+from source.py.image_model import ImageModel
 
 
 def get_models(json_file: Path) -> list[ImageModel]:
