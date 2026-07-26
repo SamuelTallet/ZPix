@@ -1,4 +1,4 @@
-# ZPix launcher for Windows.
+# ZPix starting script for Windows.
 
 param (
     [Parameter(Mandatory = $true)]

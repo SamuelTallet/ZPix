@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template filled in by package.sh: @NAME@ and @VERSION@. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>io.github.samueltallet.zpix</string>
+    <key>CFBundleName</key>
+    <string>@NAME@</string>
+    <key>CFBundleDisplayName</key>
+    <string>@NAME@</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+
+    <!-- Both only accept period-separated integers, hence the pre-release
+         suffix stripped from one and the timestamp given to the other. The
+         build version tells builds apart, so that Launch Services doesn't
+         serve the icon or the plist it cached for a previous beta. -->
+    <key>CFBundleShortVersionString</key>
+    <string>@SHORT_VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@BUILD@</string>
+
+    <!-- Relative to Contents/MacOS and Contents/Resources respectively. -->
+    <key>CFBundleExecutable</key>
+    <string>@NAME@</string>
+    <key>CFBundleIconFile</key>
+    <string>icon.icns</string>
+
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.graphics-design</string>
+
+    <!-- PyTorch refuses the MPS backend below macOS 14 (Sonoma). -->
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0.0</string>
+
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>Samuel Tallet. GNU General Public License version 3 or later.</string>
+</dict>
+</plist>

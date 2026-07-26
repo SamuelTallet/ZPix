@@ -25,27 +25,63 @@ include=(
     "requirements.txt"
     "start.sh"
 )
-executables=("start.sh")
-
-if [ "$target" = "macOS" ]; then
-    include+=("ZPix.command")
-    executables+=("ZPix.command")
-fi
 
 appName=$(cat metadata/NAME)
 version=$(cat metadata/VERSION)
-archive="$appName-v$version-$target.tar.gz"
 distDir="dist"
 
 # tar keeps permission bit.
-chmod +x "${executables[@]}"
+chmod +x start.sh
 
 mkdir -p "$distDir"
 
-# Prevent macOS tar from adding AppleDouble
-# "._*" metadata files.
-export COPYFILE_DISABLE=1
+if [ "$target" = "macOS" ]; then
+    # The app is shipped as a bundle, inside a disk image.
+    imageDir="$distDir/image"
+    bundle="$imageDir/$appName.app"
+    rm -rf "$imageDir"
+    mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 
-tar -czf "$distDir/$archive" "${include[@]}"
+    for item in "${include[@]}"; do
+        itemDir="$bundle/Contents/Resources/$(dirname "$item")"
+        mkdir -p "$itemDir"
+        cp -R "$item" "$itemDir/"
+    done
+
+    cp resources/macos/launcher.sh "$bundle/Contents/MacOS/$appName"
+    chmod +x "$bundle/Contents/MacOS/$appName"
+
+    cp resources/macos/icon.icns "$bundle/Contents/Resources/"
+
+    # Info.plist only accepts period-separated integers, whereas our version
+    # may carry a "-beta.n" suffix. Any increasing triplet works as a build
+    # version: Launch Services merely compares it to the one it has cached.
+    shortVersion=${version%%-*}
+    build=$(date -u +%y.%m%d.%H%M)
+
+    sed -e "s/@NAME@/$appName/g" \
+        -e "s/@SHORT_VERSION@/$shortVersion/g" \
+        -e "s/@BUILD@/$build/g" \
+        resources/macos/Info.plist.in > "$bundle/Contents/Info.plist"
+
+    # Legacy but still expected by Launch Services.
+    printf 'APPL????' > "$bundle/Contents/PkgInfo"
+
+    ln -s /Applications "$imageDir/Applications"
+    # Dragging the app there makes its directory writable for the venv.
+
+    archive="$appName-v$version-$target.dmg"
+    hdiutil create -volname "$appName $version" -srcfolder "$imageDir" \
+        -ov -format UDZO "$distDir/$archive" > /dev/null
+
+    rm -rf "$imageDir"
+else
+    # The app is shipped as a tarball.
+    # Prevent macOS tar from adding AppleDouble "._*" metadata files.
+    export COPYFILE_DISABLE=1
+
+    archive="$appName-v$version-$target.tar.gz"
+    tar -czf "$distDir/$archive" "${include[@]}"
+fi
 
 echo "Archive $distDir/$archive created."

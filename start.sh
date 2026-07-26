@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+# Paths below are relative to this script.
+cd "$(dirname "$0")"
+
 # Installs uv in a given directory.
 # Exits with code 1 if neither curl nor wget are available.
 #
