@@ -7,10 +7,7 @@ import gradio as gr
 import torch
 from accelerate import cpu_offload
 from accelerate.hooks import remove_hook_from_module
-from diffusers.modular_pipelines.components_manager import (
-    AutoOffloadStrategy,
-    custom_offload_with_hook,
-)
+from diffusers.modular_pipelines.components_manager import custom_offload_with_hook
 from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils.torch_utils import get_device
@@ -21,9 +18,37 @@ from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.krea2_flash import install_krea2_flash_attn
+from source.py.offload_strat import FreeMemoryOffloadStrategy
 
 MEMORY_RESERVE_MARGIN = 3 * 1024**3
 """GPU memory kept free, in bytes, for the activations of the running component."""
+
+VAE_MEGAPIXELS_PER_GB = 0.23
+"""Megapixels a VAE can handle in one pass, per GB of GPU memory.
+
+Its peak is about 1.75GB per megapixel: 3.7GB at 1920x1088, 7.2GB at 2048x2048.
+Measured on the Z-Image VAE, whose decoder holds 128 channels at full resolution,
+as the FLUX.2 one does; the Qwen-Image VAE of Anima and Krea 2 has another
+architecture and may peak elsewhere.
+"""
+
+
+def get_total_memory() -> int | None:
+    """Get the GPU memory, in bytes, or `None` if it can't be measured."""
+    if torch.backends.mps.is_available():
+        return getattr(torch.mps, "recommended_max_memory", lambda: None)()
+
+    if not (torch.cuda.is_available() or torch.xpu.is_available()):
+        return None
+
+    device = torch.device(get_device())
+
+    if device.index is None:
+        device = torch.device(f"{device.type}:0")
+
+    device_module = getattr(torch, device.type, torch.cuda)
+
+    return device_module.mem_get_info(device.index)[1]
 
 
 class ImagePipeline:
@@ -89,7 +114,7 @@ class ImagePipeline:
 
         try:
             self.instance.vae.to(memory_format=torch.channels_last)
-        except RuntimeError as e:
+        except (AttributeError, RuntimeError) as e:
             logger.warning(f"Can't apply memory format optimization: {e}")
 
         # On NVIDIA, AMD & Intel ARC GPUs:
@@ -105,6 +130,37 @@ class ImagePipeline:
                 self.instance.enable_attention_slicing()
 
         return model
+
+    def tile_vae_if_needed(self, width: int, height: int) -> None:
+        """Tile the VAE work only for the pictures this GPU can't handle in one pass.
+
+        The VAE encodes and decodes the picture as a whole, so its peak memory
+        grows with the resolution and, past a point, it alone fills the GPU. Tiling
+        bounds that peak but can leave faint seams, so it's a trade only worth
+        making when the picture wouldn't go through otherwise.
+
+        Args:
+            width: Width of the picture to generate, in pixels.
+            height: Height of the picture to generate, in pixels.
+        """
+        vae = getattr(self.instance, "vae", None)
+
+        if vae is None:
+            return
+
+        total_memory = get_total_memory()
+
+        # An unmeasurable GPU gets the safe path rather than an optimistic one.
+        needs_tiling = total_memory is None or width * height / 1e6 > (
+            VAE_MEGAPIXELS_PER_GB * total_memory / 1024**3
+        )
+
+        toggle = getattr(
+            vae, "enable_tiling" if needs_tiling else "disable_tiling", None
+        )
+
+        if toggle is not None:
+            toggle()
 
     def offload_to_cpu(self) -> None:
         """Offload the pipeline weights to CPU, keeping on GPU what fits."""
@@ -126,7 +182,7 @@ class ImagePipeline:
         device_module = getattr(torch, device.type, torch.cuda)
         total_memory = device_module.mem_get_info(device.index)[1]
 
-        offload_strategy = AutoOffloadStrategy(
+        offload_strategy = FreeMemoryOffloadStrategy(
             memory_reserve_margin=MEMORY_RESERVE_MARGIN
         )
 

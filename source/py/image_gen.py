@@ -78,6 +78,8 @@ def generate(
     width, height = parse_resolution(resolution)
     used_seed = randint(1, 1000000) if random_seed else int(seed)
 
+    image_pipe.tile_vae_if_needed(width, height)
+
     pipe_kwargs = {
         "prompt": prompt,
         "height": height,
