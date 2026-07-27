@@ -7,13 +7,30 @@ Hotswap LoRAs. Drag reference images directly from output gallery, which is alwa
 
 ## Quick start
 
-1. Download and extract [ZPix-v1.0.7.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.7/ZPix-v1.0.7.zip)
+Windows:
+1. Download and extract [ZPix-v1.0.8-Windows.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix-v1.0.8-Windows.zip)
 2. Run `ZPix.exe`
     - If SmartScreen pops, click on "More info", "Run anyway"
     - If a DLL is missing, install [Visual C++ Redist](https://aka.ms/vc14/vc_redist.x64.exe) and re-run
-3. Write a prompt
-4. Click on "Generate Image"
-5. Images are autosaved in your Pictures \ ZPix
+
+Linux:
+1. Download and extract [ZPix-v1.0.8-Linux.tar.gz](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix-v1.0.8-Linux.tar.gz)
+2. Run `./start.sh`
+
+macOS:
+1. Download and open [ZPix-v1.0.8-macOS.dmg](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix-v1.0.8-macOS.dmg)
+2. Drag ZPix to Applications
+3. Run ZPix from Applications
+    - If the app doesn't launch, go to system "Settings" > "Privacy & Security", click on "Open Anyway"
+
+Once automatic setup is done:
+- Write a prompt and click on "Generate Image"
+- Images are autosaved in your Pictures folder, under ZPix
+
+## Supported hardware
+
+- Recent NVIDIA graphics cards
+- Apple Silicon GPUs
 
 ## Recommended configuration
 
@@ -41,7 +58,7 @@ Create image from prompt.
 
 ### Image-to-Image
 
-- Edit image based on prompt and reference images.
+- Create or edit image based on prompt and/or reference images.
 - Add or drag reference images from output gallery or anywhere.
 
 ### Prompts history
