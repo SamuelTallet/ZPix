@@ -29,7 +29,7 @@ install_uv_in() {
 # Prints a warning if installation fails.
 #
 # Parameters:
-#   $1: Package. Example: "triton==3.6.0"
+#   $1: Package. Example: "triton==3.7.1"
 #   $2: Path to uv executable
 #
 install_optional_py() {
@@ -90,13 +90,13 @@ fi
 
 # Python environment is maybe broken so it's safer to resetup it everytime.
 # Wasted time is not so important thanks to uv cache.
-$uv_exe venv --python 3.13 --clear
+$uv_exe venv --python 3.14 --clear
 
 echo "Installing dependencies in .venv..."
 
-$uv_exe pip install "numpy==2.5.0"
-$uv_exe pip install "torch==2.11.0" --torch-backend=auto
-$uv_exe pip install "torchvision==0.26.0" --torch-backend=auto
+$uv_exe pip install "numpy==2.5.1"
+$uv_exe pip install "torch==2.13.0" --torch-backend=auto
+$uv_exe pip install "torchvision==0.28.0" --torch-backend=auto
 
 if [ "$os" = "Linux" ]; then
 
@@ -111,16 +111,16 @@ if [ "$os" = "Linux" ]; then
     cuda=$($uv_exe run python -c "import torch; print(torch.version.cuda)")
     echo "PyTorch CUDA version installed: $cuda"
 
-    install_optional_py "triton==3.6.0" $uv_exe
+    install_optional_py "triton==3.7.1" $uv_exe
 
     # We explicitely check NVIDIA because ROCm (AMD) emulates CUDA availability.
     if $is_nvidia && [ "$cuda" = "13.0" ]; then
         case "$arch" in
             x86_64)
-                install_optional_py "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl" $uv_exe
+                install_optional_py "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.47/flash_attn-2.8.3+cu130torch2.13-cp314-cp314-linux_x86_64.whl" $uv_exe
                 ;;
             aarch64)
-                install_optional_py "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.20/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_aarch64.whl" $uv_exe
+                install_optional_py "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.49/flash_attn-2.8.3+cu130torch2.13-cp314-cp314-linux_aarch64.whl" $uv_exe
                 ;;
         esac
     fi

@@ -84,13 +84,13 @@ Write-Host "Installing..." -ForegroundColor Blue
 $optimized = $false
 
 if ($gpu.Vendor -eq "NVIDIA") {
-    New-VirtualEnv -Python "3.13.11" -Uv $uv
+    New-VirtualEnv -Python "3.14" -Uv $uv
     try {
         Write-Host "Trying optimized setup for your NVIDIA GPU..."
-        Install-Torch -Version "2.11.0+cu130" -IndexUrl "cu130" -Uv $Uv
-        Install-TorchVision -Version "0.26.0+cu130" -IndexUrl "cu130" -Uv $Uv
-        Install-Dependency -Spec "triton-windows==3.6.0.post26" -Uv $Uv
-        Install-Dependency -Spec "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl" -Uv $Uv
+        Install-Torch -Version "2.13.0+cu130" -IndexUrl "cu130" -Uv $Uv
+        Install-TorchVision -Version "0.28.0+cu130" -IndexUrl "cu130" -Uv $Uv
+        Install-Dependency -Spec "triton-windows==3.7.1.post27" -Uv $Uv
+        Install-Dependency -Spec "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.52/flash_attn-2.8.3+cu130torch2.13-cp314-cp314-win_amd64.whl" -Uv $Uv
         Install-Requirements -File "requirements.txt" -Uv $Uv
         $optimized = $true
     }
@@ -105,10 +105,10 @@ if ($optimized) {
 }
 else {
     # This marker is removed by `uv venv --clear`, that's consistent.
-    New-VirtualEnv -Python "3.13.11" -Uv $uv
+    New-VirtualEnv -Python "3.14" -Uv $uv
     Write-Host "Trying default setup..."
-    Install-Torch -Version "2.11.0" -Backend "auto" -Uv $Uv
-    Install-TorchVision -Version "0.26.0" -Backend "auto" -Uv $Uv
+    Install-Torch -Version "2.13.0" -Backend "auto" -Uv $Uv
+    Install-TorchVision -Version "0.28.0" -Backend "auto" -Uv $Uv
     Install-Requirements -File "requirements.txt" -Uv $Uv
 }
 
