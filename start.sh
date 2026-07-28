@@ -118,15 +118,25 @@ if [ "$os" = "Linux" ]; then
     install_optional_py "triton==3.7.1" $uv_exe
 
     # We explicitely check NVIDIA because ROCm (AMD) emulates CUDA availability.
-    if $is_nvidia && [ "$cuda" = "13.0" ]; then
-        case "$arch" in
-            x86_64)
-                install_optional_py "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.47/flash_attn-2.8.3+cu130torch2.13-cp314-cp314-linux_x86_64.whl" $uv_exe
-                ;;
-            aarch64)
-                install_optional_py "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.49/flash_attn-2.8.3+cu130torch2.13-cp314-cp314-linux_aarch64.whl" $uv_exe
-                ;;
+    if $is_nvidia; then
+
+        # Each FlashAttention wheel targets one CUDA build; we follow uv's pick.
+        case "$cuda" in
+            12.6) cuda_tag=cu126 ;;
+            13.0) cuda_tag=cu130 ;;
+            13.2) cuda_tag=cu132 ;;
+            *)    cuda_tag="" ;;
         esac
+
+        case "$arch" in
+            x86_64)  flash_tag=v0.9.47 ;;
+            aarch64) flash_tag=v0.9.49 ;;
+            *)       flash_tag="" ;;
+        esac
+
+        if [ -n "$cuda_tag" ] && [ -n "$flash_tag" ]; then
+            install_optional_py "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/${flash_tag}/flash_attn-2.8.3+${cuda_tag}torch2.13-cp314-cp314-linux_${arch}.whl" $uv_exe
+        fi
     fi
 
 fi
