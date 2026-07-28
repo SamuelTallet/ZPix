@@ -14,6 +14,7 @@ from diffusers.utils.torch_utils import get_device
 from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
 
+from source.py.anima_flash import install_anima_flash_attn
 from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
@@ -141,20 +142,30 @@ class ImagePipeline:
                     apply_sdnq_options_to_model(component, use_quantized_matmul=True)
                     logger.info(f"SDNQ Quantized MatMul enabled for {component_name}.")
 
+            # The backend is picked process-wide, not per pipeline, so a swap
+            # would otherwise inherit whatever the family before it chose.
+            self.instance.transformer.set_attention_backend("native")
+
             if model.family in ("Z-Image", "FLUX", "FLUX.2"):
                 try:
                     self.instance.transformer.set_attention_backend("flash")
                 except Exception as e:  # noqa: BLE001
                     self.instance.transformer.reset_attention_backend()
                     logger.warning(f"FlashAttention is not available: {e}")
+
+            # These two carry attention the backend refuses, Anima because its
+            # text conditioner masks it, Krea 2 because of its grouped queries.
+            # Only their transformer takes the kernel, one processor at a time.
+            elif model.family == "Anima":
+                try:
+                    install_anima_flash_attn(self.instance)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"FlashAttention is not available for Anima: {e}")
             elif model.family == "Krea 2":
                 try:
                     install_krea2_flash_attn(self.instance)
                 except Exception as e:  # noqa: BLE001
-                    self.instance.transformer.reset_attention_backend()
                     logger.warning(f"FlashAttention is not available for Krea 2: {e}")
-            else:
-                self.instance.transformer.set_attention_backend("native")
 
         try:
             self.instance.vae.to(memory_format=torch.channels_last)
