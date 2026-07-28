@@ -15,10 +15,9 @@ class FreeMemoryOffloadStrategy(AutoOffloadStrategy):
     resolution, the larger those blocks: it ends up believing no eviction can free
     enough room, and offloads *every* component on each forward pass.
 
-    Reclaiming here is also the only defragmentation available on Windows, where
-    the allocator can't be set to `expandable_segments`. Without it the cache ends
-    up in pieces too small to serve the activations, and every generation gets
-    slower than the one before.
+    Reclaiming here is also the only defragmentation available where the allocator
+    can't be set to `expandable_segments`, as on Windows. Without it, each
+    generation gets slower than the one before.
     """
 
     def __call__(self, hooks, model_id, model, execution_device):

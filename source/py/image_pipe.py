@@ -20,35 +20,67 @@ from source.py.image_model import ImageModel
 from source.py.krea2_flash import install_krea2_flash_attn
 from source.py.offload_strat import FreeMemoryOffloadStrategy
 
-MEMORY_RESERVE_MARGIN = 3 * 1024**3
-"""GPU memory kept free, in bytes, for the activations of the running component."""
+MEMORY_RESERVE_RATIO = 0.35
+"""Share of the GPU kept free for the activations of the running component."""
 
-VAE_MEGAPIXELS_PER_GB = 0.23
-"""Megapixels a VAE can handle in one pass, per GB of GPU memory.
+MIN_MEMORY_RESERVE = int(2.5 * 1024**3)
+"""Smallest reserve, in bytes: what a tiled VAE decode peaks at, with a margin."""
 
-Its peak is about 1.75GB per megapixel: 3.7GB at 1920x1088, 7.2GB at 2048x2048.
-Measured on the Z-Image VAE, whose decoder holds 128 channels at full resolution,
-as the FLUX.2 one does; the Qwen-Image VAE of Anima and Krea 2 has another
-architecture and may peak elsewhere.
+MAX_MEMORY_RESERVE = 4 * 1024**3
+"""Largest reserve, in bytes: past that, a roomy GPU would evict for nothing."""
+
+BYTES_PER_MEGAPIXEL = int(1.75 * 1024**3)
+"""What one megapixel costs a VAE pass, in bytes.
+
+Measured on a decoder holding 128 channels at full resolution. Other
+architectures may peak elsewhere.
 """
 
 
-def get_total_memory() -> int | None:
-    """Get the GPU memory, in bytes, or `None` if it can't be measured."""
-    if torch.backends.mps.is_available():
-        return getattr(torch.mps, "recommended_max_memory", lambda: None)()
+def get_memory_reserve(total_memory: int) -> int:
+    """Get the GPU memory to keep free, in bytes, for the component running.
 
-    if not (torch.cuda.is_available() or torch.xpu.is_available()):
-        return None
+    A flat reserve doesn't travel: comfortable on a large GPU, it eats half of a
+    small one and leaves the transformer streamed submodule by submodule at every
+    step. A share of the card puts that trade-off at the same place everywhere.
 
+    Args:
+        total_memory: The GPU memory, in bytes.
+    """
+    reserve = int(MEMORY_RESERVE_RATIO * total_memory)
+
+    return min(max(reserve, MIN_MEMORY_RESERVE), MAX_MEMORY_RESERVE)
+
+
+def get_execution_device() -> torch.device:
+    """Get the GPU the pipeline runs on, index included."""
     device = torch.device(get_device())
 
     if device.index is None:
         device = torch.device(f"{device.type}:0")
 
+    return device
+
+
+def get_memory_info() -> tuple[int, int] | None:
+    """Get the GPU memory free and total, in bytes, or `None` if unmeasurable.
+
+    Only the free figure nets out what the desktop and the other applications
+    hold; a budget read off the total would promise memory this process never gets.
+    """
+    if torch.backends.mps.is_available():
+        # Mac memory is shared with the CPU: its budget stands for both figures.
+        budget = getattr(torch.mps, "recommended_max_memory", lambda: None)()
+
+        return (budget, budget) if budget else None
+
+    if not (torch.cuda.is_available() or torch.xpu.is_available()):
+        return None
+
+    device = get_execution_device()
     device_module = getattr(torch, device.type, torch.cuda)
 
-    return device_module.mem_get_info(device.index)[1]
+    return device_module.mem_get_info(device.index)
 
 
 class ImagePipeline:
@@ -57,6 +89,18 @@ class ImagePipeline:
     def __init__(self):
         self.instance: ModularPipeline | DiffusionPipeline | None = None
         """Loaded pipeline, `None` during a swap."""
+
+        self.memory_reserve = 0
+        """GPU memory the offload strategy keeps free, in bytes; 0 without one."""
+
+        self.memory_budget: int | None = None
+        """GPU memory a single VAE pass can count on, in bytes; `None` if unknown."""
+
+        self.streams_weights = False
+        """Are the weights streamed submodule by submodule, leaving the GPU free?"""
+
+        self.offload_strategy: FreeMemoryOffloadStrategy | None = None
+        """Strategy evicting the components, `None` when none is in play."""
 
     def load(self, model: ImageModel) -> ImageModel:
         """Load an image model pipeline."""
@@ -117,9 +161,17 @@ class ImagePipeline:
         except (AttributeError, RuntimeError) as e:
             logger.warning(f"Can't apply memory format optimization: {e}")
 
+        # Read before anything reaches the GPU: this is what the weights and the
+        # activations will share.
+        memory_info = get_memory_info()
+        self.memory_reserve = 0
+        self.memory_budget = None
+        self.streams_weights = False
+        self.offload_strategy = None
+
         # On NVIDIA, AMD & Intel ARC GPUs:
-        if torch.cuda.is_available() or torch.xpu.is_available():
-            self.offload_to_cpu()
+        if memory_info and (torch.cuda.is_available() or torch.xpu.is_available()):
+            self.offload_to_cpu(memory_info[1])
 
         # On Mac GPUs:
         elif torch.backends.mps.is_available():
@@ -129,7 +181,54 @@ class ImagePipeline:
             if hasattr(self.instance, "enable_attention_slicing"):
                 self.instance.enable_attention_slicing()
 
+        self.memory_budget = self.measure_memory_budget(memory_info)
+
         return model
+
+    def measure_memory_budget(self, memory_info: tuple[int, int] | None) -> int | None:
+        """Measure the GPU memory a single VAE pass can count on, in bytes.
+
+        Only the weights that can't leave the GPU are deducted. Under the offload
+        strategy that's the VAE itself, every sibling being evictable, so the
+        decode gets nearly the whole card rather than the leftovers of whatever
+        ran before it. It starts from the free memory, never the total: the
+        desktop takes its cut first, and a share of the card would ignore it.
+
+        Args:
+            memory_info: GPU memory free and total, in bytes, read with the
+                pipeline still on CPU, or `None` if it couldn't be measured.
+
+        Returns:
+            The budget, or `None` if it can't be measured.
+        """
+        if memory_info is None or self.instance is None:
+            return None
+
+        free_memory = memory_info[0]
+
+        # Streamed weights never claim the card, leaving all of it to the pass.
+        if self.streams_weights:
+            return free_memory
+
+        def footprint_of(component) -> int:
+            get_footprint = getattr(component, "get_memory_footprint", None)
+
+            return get_footprint() if get_footprint is not None else 0
+
+        if self.offload_strategy is not None:
+            resident = footprint_of(getattr(self.instance, "vae", None))
+        else:
+            # Nothing evicts on Mac: the whole pipeline stays on the GPU.
+            resident = sum(map(footprint_of, self.instance.components.values()))
+
+        budget = max(self.memory_reserve, free_memory - resident)
+
+        logger.info(
+            f"VAE budget: {budget / BYTES_PER_MEGAPIXEL:.1f}MP in one pass, "
+            f"{free_memory / 1024**3:.1f}GB free."
+        )
+
+        return budget
 
     def tile_vae_if_needed(self, width: int, height: int) -> None:
         """Tile the VAE work only for the pictures this GPU can't handle in one pass.
@@ -148,12 +247,26 @@ class ImagePipeline:
         if vae is None:
             return
 
-        total_memory = get_total_memory()
+        megapixels = width * height / 1e6
+        peak = int(megapixels * BYTES_PER_MEGAPIXEL)
 
         # An unmeasurable GPU gets the safe path rather than an optimistic one.
-        needs_tiling = total_memory is None or width * height / 1e6 > (
-            VAE_MEGAPIXELS_PER_GB * total_memory / 1024**3
-        )
+        needs_tiling = self.memory_budget is None or peak > self.memory_budget
+
+        # The strategy sizes its evictions on the weights it moves, not on the
+        # activations behind them: the VAE always looks small enough to fit, so
+        # whatever ran before keeps the room the decode needs. Hence its peak.
+        if self.offload_strategy is not None:
+            margin = max(
+                self.memory_reserve, MIN_MEMORY_RESERVE if needs_tiling else peak
+            )
+            self.offload_strategy.memory_reserve_margin = margin
+
+            logger.info(
+                f"Decoding {megapixels:.1f}MP "
+                f"{'tiled' if needs_tiling else 'in one pass'}, "
+                f"evicting down to {margin / 1024**3:.1f}GB free."
+            )
 
         toggle = getattr(
             vae, "enable_tiling" if needs_tiling else "disable_tiling", None
@@ -162,29 +275,31 @@ class ImagePipeline:
         if toggle is not None:
             toggle()
 
-    def offload_to_cpu(self) -> None:
-        """Offload the pipeline weights to CPU, keeping on GPU what fits."""
+    def offload_to_cpu(self, total_memory: int) -> None:
+        """Offload the pipeline weights to CPU, keeping on GPU what fits.
+
+        Args:
+            total_memory: The GPU memory, in bytes.
+        """
         if self.instance is None:
             return
 
         if isinstance(self.instance, DiffusionPipeline):
             self.instance.enable_sequential_cpu_offload()
+            self.streams_weights = True
             return
 
         # A modular pipeline has no offload helper: replicate the auto CPU offload
         # of its components manager, which can't be used as is because it hooks
         # every component, including those too large to stay on the GPU.
-        device = torch.device(get_device())
-
-        if device.index is None:
-            device = torch.device(f"{device.type}:0")
-
-        device_module = getattr(torch, device.type, torch.cuda)
-        total_memory = device_module.mem_get_info(device.index)[1]
+        device = get_execution_device()
+        memory_reserve = get_memory_reserve(total_memory)
+        self.memory_reserve = memory_reserve
 
         offload_strategy = FreeMemoryOffloadStrategy(
-            memory_reserve_margin=MEMORY_RESERVE_MARGIN
+            memory_reserve_margin=memory_reserve
         )
+        self.offload_strategy = offload_strategy
 
         hooks = []
 
@@ -194,8 +309,7 @@ class ImagePipeline:
 
             footprint = getattr(component, "get_memory_footprint", None)
             fits_on_gpu = (
-                footprint is not None
-                and footprint() + MEMORY_RESERVE_MARGIN <= total_memory
+                footprint is not None and footprint() + memory_reserve <= total_memory
             )
 
             # Moving such a component as a whole would saturate the GPU: stream its
