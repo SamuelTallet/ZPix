@@ -6,19 +6,22 @@ set -euo pipefail
 # Paths below are relative to this script.
 cd "$(dirname "$0")"
 
-# Installs uv in a given directory.
+# Installs a version of uv in a given directory.
 # Exits with code 1 if neither curl nor wget are available.
 #
 # Parameters:
-#   $1: Path to installation directory
+#   $1: uv version to install. Example: "0.11.32"
+#   $2: Path to installation directory
 #
-install_uv_in() {
-    local uv_dir=$1
+install_uv() {
+    local uv_version=$1
+    local uv_dir=$2
+    local uv_installer=https://astral.sh/uv/${uv_version}/install.sh
 
     if command -v curl > /dev/null 2>&1; then
-        curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$uv_dir" sh
+        curl -LsSf "$uv_installer" | env UV_UNMANAGED_INSTALL="$uv_dir" sh
     elif command -v wget > /dev/null 2>&1; then
-        wget -qO- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$uv_dir" sh
+        wget -qO- "$uv_installer" | env UV_UNMANAGED_INSTALL="$uv_dir" sh
     else
         echo "Error: curl or wget is required to install uv"
         exit 1
@@ -73,14 +76,15 @@ os=$(uname -s); arch=$(uname -m)
 echo "Detected platform: $os ($arch)"
 
 # Path to uv executable.
-# We use a local uv to avoid conflicts with a possibly installed global uv.
+# We use a local uv to avoid conflicts with a possibly installed global uv.
 local_uv_dir=./tools/astral
 uv_exe=${local_uv_dir}/uv
 
 # Check uv availability.
 if ! $uv_exe --version > /dev/null 2>&1; then
     echo "local uv is not available, let's install it..."
-    install_uv_in $local_uv_dir
+
+    install_uv $(cat ${local_uv_dir}/VERSION) $local_uv_dir
 
     if ! $uv_exe --version > /dev/null 2>&1; then
         echo "uv is still not available, please run again start.sh"

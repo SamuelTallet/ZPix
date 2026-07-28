@@ -19,6 +19,7 @@ include=(
     source/py/*.py
     "source/app.js"
     "tools/astral/LICENSE.txt"
+    "tools/astral/VERSION"
     "translations"
     "app.py"
     "LICENSE"
