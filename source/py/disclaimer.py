@@ -24,6 +24,7 @@ class TermsOfUse:
     def accept(self):
         """Accept Terms of Use."""
         try:
+            self.accepted_file.parent.mkdir(parents=True, exist_ok=True)
             self.accepted_file.write_text("by user")
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Can't write {self.accepted_file}: {e}")

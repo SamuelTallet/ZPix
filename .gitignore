@@ -7,7 +7,6 @@ dist
 temp
 tools/astral/uv*
 vcpkg_installed
-.tou_accepted
 DEBUG*
 *.dll
 ZPix.exe

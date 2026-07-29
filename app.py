@@ -43,6 +43,7 @@ from source.py.translations import get_translate_func
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
+from source.py.user_data_dir import get_user_data_dir
 
 if __name__ == "__main__":
     # Parse args.
@@ -130,7 +131,7 @@ if __name__ == "__main__":
             default_aspect_ratio,
         ) = get_aspects_and_resolutions()
 
-        tou = TermsOfUse(app_dir / ".tou_accepted")
+        tou = TermsOfUse(get_user_data_dir() / "tou_accepted")
 
         with gr.Row(elem_classes=[] if tou.accepted() else ["blurred"]) as ui_row:
             with gr.Column(min_width=48, elem_classes=["sidebar"]):
