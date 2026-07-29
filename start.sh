@@ -3,7 +3,14 @@
 
 set -euo pipefail
 
-# Paths below are relative to this script.
+# Cache will be stored in the user profile directory.
+user_cache_dir="$HOME/.cache/zpix"
+
+# By default, Python writes bytecode next to sources.
+# But the app directory must be read-only once packaged.
+export PYTHONPYCACHEPREFIX="$user_cache_dir/python"
+
+# Relative paths below resolve from this script.
 cd "$(dirname "$0")"
 
 # Installs a version of uv in a given directory.
