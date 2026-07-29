@@ -44,6 +44,7 @@ from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
 from source.py.user_data_dir import get_user_data_dir
+from source.py.user_temp_dir import get_user_temp_dir
 
 if __name__ == "__main__":
     # Parse args.
@@ -73,9 +74,9 @@ if __name__ == "__main__":
     app_dir = Path(__file__).parent
     """App directory."""
 
-    # As we store temp files created by Gradio in this app' subfolder
+    # As we store temp files created by Gradio in a ZPix folder
     # we can remove them without worry about impacting other Gradio apps.
-    gradio_temp_dir = app_dir / "temp" / "GradioApp"
+    gradio_temp_dir = get_user_temp_dir() / "Gradio"
     environ["GRADIO_TEMP_DIR"] = str(gradio_temp_dir)
 
     # This temp directory may hold files existing also in output directory
