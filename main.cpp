@@ -3,7 +3,6 @@
 #include <windows.h>
 #include <string>
 
-#include "free_port.hpp"
 #include "metadata.hpp"
 #include "processes.hpp"
 #include "starter.hpp"
@@ -17,16 +16,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     AttachConsole(ATTACH_PARENT_PROCESS);
 
     auto metadata = load_metadata();
-    
-    uint16_t port = 0;
-    try {
-        port = find_free_port();
-    } catch (const std::exception& e) {
-        MessageBoxA(NULL, e.what(), "Initialization Error", MB_ICONERROR);
+
+    if (metadata.httpPort == 0) {
+        MessageBoxA(NULL, "Invalid or missing metadata/HTTP_PORT", "Initialization Error", MB_ICONERROR);
         return 1;
     }
 
-    std::wstring url = L"http://127.0.0.1:" + std::to_wstring(port);
+    std::wstring url = L"http://127.0.0.1:" + std::to_wstring(metadata.httpPort);
 
     MSG msg;
     PeekMessageW(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
@@ -34,7 +30,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     JobObject job;
     DWORD mainThreadId = GetCurrentThreadId();
 
-    StarterThread starter(port, job, [mainThreadId]() {
+    StarterThread starter(job, [mainThreadId]() {
         PostThreadMessageW(mainThreadId, WM_QUIT, 0, 0);
     });
 
@@ -48,7 +44,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         return 0;
     }
 
-    WatcherThread watcher(port, [hwnd, &url, &title]() {
+    WatcherThread watcher(metadata.httpPort, [hwnd, &url, &title]() {
         Console console(title);
         console.hide();
         PostMessageW(hwnd, WM_APP_WEBVIEW_READY, 0, reinterpret_cast<LPARAM>(url.c_str()));

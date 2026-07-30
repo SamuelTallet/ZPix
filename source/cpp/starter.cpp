@@ -2,9 +2,9 @@
 #include <windows.h>
 #include <vector>
 
-void StarterThread::run(std::stop_token stoken, uint16_t port, JobObject& job, std::function<void()> on_exit) {
-    std::string cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File start.ps1 -Port " + std::to_string(port);
-    
+void StarterThread::run(std::stop_token stoken, JobObject& job, std::function<void()> on_exit) {
+    std::string cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File start.ps1";
+
     STARTUPINFOA si = { sizeof(si) };
     PROCESS_INFORMATION pi = { 0 };
     
@@ -33,8 +33,8 @@ void StarterThread::run(std::stop_token stoken, uint16_t port, JobObject& job, s
     }
 }
 
-StarterThread::StarterThread(uint16_t port, JobObject& job, std::function<void()> on_exit) {
-    worker = std::jthread([this, port, &job, on_exit](std::stop_token stoken) { this->run(stoken, port, job, on_exit); });
+StarterThread::StarterThread(JobObject& job, std::function<void()> on_exit) {
+    worker = std::jthread([this, &job, on_exit](std::stop_token stoken) { this->run(stoken, job, on_exit); });
 }
 
 StarterThread::~StarterThread() {

@@ -1,10 +1,5 @@
 # ZPix starting script for Windows.
 
-param (
-    [Parameter(Mandatory = $true)]
-    [int]$Port # Local port to run this app on.
-)
-
 $ErrorActionPreference = "Stop"
 
 # Is debug mode enabled?
@@ -67,7 +62,7 @@ if (Test-Path ".venv\optimized") {
     Write-Host "Optimized Python venv found. Skipping install." -ForegroundColor Green
     try {
         Write-Host "Loading model, please wait..." -ForegroundColor Blue
-        Invoke-App -Port $Port -Uv $uv
+        Invoke-App -Uv $uv
         exit # to not go to install since app ran successfully if we reach this stage.
     }
     catch {
@@ -115,4 +110,4 @@ else {
 Write-Host "Installation complete." -ForegroundColor Green
 
 Write-Host "Loading model... We are nearly there!" -ForegroundColor Blue
-Invoke-App -Port $Port -Uv $uv
+Invoke-App -Uv $uv

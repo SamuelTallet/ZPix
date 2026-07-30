@@ -1,9 +1,6 @@
 function Invoke-App {
     param (
         [Parameter(Mandatory = $true)]
-        [int]$Port, # Local port to use
-
-        [Parameter(Mandatory = $true)]
         [string]$Uv # Path to uv executable
     )
 
@@ -12,7 +9,6 @@ function Invoke-App {
 
     $uvArgs = @(
         "run", "app.py",
-        "--port", $Port,
         # No --in-browser arg here since on Windows
         # the app is shown in a WebView2 window.
         "--locale", $locale

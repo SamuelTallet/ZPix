@@ -151,4 +151,4 @@ fi
 $uv_exe pip install -r requirements.txt
 
 echo "Loading model... We are nearly there!"
-$uv_exe run app.py --port 26000 --in-browser --locale "$(get_locale)"
+$uv_exe run app.py --in-browser --locale "$(get_locale)"
