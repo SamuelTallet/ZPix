@@ -28,7 +28,7 @@ Webview::~Webview() {
 }
 
 void Webview::Initialize(HWND parent, const std::wstring& url) {
-    std::wstring userDataFolder = L"temp";
+    std::wstring userDataFolder = L"cache";
     CreateCoreWebView2EnvironmentWithOptions(nullptr, userDataFolder.c_str(), nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [this, parent, url](HRESULT result, ICoreWebView2Environment* env) -> HRESULT {

@@ -4,7 +4,6 @@ __pycache__
 build
 cache
 dist
-temp
 tools/astral/uv*
 vcpkg_installed
 DEBUG*
