@@ -95,7 +95,7 @@ uv_exe=${local_uv_dir}/uv
 if ! $uv_exe --version > /dev/null 2>&1; then
     echo "local uv is not available, let's install it..."
 
-    install_uv $(cat ${local_uv_dir}/VERSION) $local_uv_dir
+    install_uv $(cat ./.uv-version) $local_uv_dir
 
     if ! $uv_exe --version > /dev/null 2>&1; then
         echo "uv is still not available, please run again start.sh"
