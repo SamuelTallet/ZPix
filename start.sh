@@ -10,6 +10,10 @@ user_cache_dir="$HOME/.cache/zpix"
 # But the app directory must be read-only once packaged.
 export PYTHONPYCACHEPREFIX="$user_cache_dir/python"
 
+# Same for the Python environment, otherwise created in the app directory.
+# Outside of a project, uv reads VIRTUAL_ENV for its pip and run commands.
+export VIRTUAL_ENV="$user_cache_dir/venv"
+
 # Relative paths below resolve from this script.
 cd "$(dirname "$0")"
 
@@ -101,9 +105,9 @@ fi
 
 # Python environment is maybe broken so it's safer to resetup it everytime.
 # Wasted time is not so important thanks to uv cache.
-$uv_exe venv --python 3.14 --clear
+$uv_exe venv --python 3.14 --clear --force "$VIRTUAL_ENV"
 
-echo "Installing dependencies in .venv..."
+echo "Installing dependencies in $VIRTUAL_ENV..."
 
 $uv_exe pip install "numpy==2.5.1"
 $uv_exe pip install "torch==2.13.0" --torch-backend=auto
