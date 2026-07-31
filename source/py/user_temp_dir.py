@@ -11,9 +11,9 @@ def get_user_temp_dir() -> Path:
 
     Each consumer is expected to append its own subfolder.
     """
-    if platform == "win32":
-        # The Windows temp directory already belongs to the current user.
+    # On Windows and macOS, the temp directory belongs to the current user.
+    if platform in ("win32", "darwin"):
         return Path(gettempdir()) / "ZPix"
 
-    # On Unix, the temp directory is shared between users, hence the UID.
+    # On Linux, the temp directory is shared between users, hence the UID.
     return Path(gettempdir()) / f"ZPix-{os.getuid()}"

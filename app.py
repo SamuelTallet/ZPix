@@ -43,7 +43,10 @@ from source.py.translations import get_translate_func
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
-from source.py.user_data_dir import get_user_preferences_dir
+from source.py.user_data_dir import (
+    get_user_preferences_dir,
+    migrate_user_preferences,
+)
 from source.py.user_temp_dir import get_user_temp_dir
 
 if __name__ == "__main__":
@@ -87,6 +90,8 @@ if __name__ == "__main__":
 
     # Let's serve assets directly.
     gr.set_static_paths(paths=[assets_dir])
+
+    migrate_user_preferences()
 
     output_dir = get_output_dir()
     """The folder where ZPix saves generated images."""
