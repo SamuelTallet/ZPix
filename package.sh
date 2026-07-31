@@ -18,7 +18,6 @@ include=(
     "source/css"
     source/py/*.py
     "source/app.js"
-    "tools/astral/LICENSE.txt"
     "translations"
     ".uv-version"
     "app.py"
@@ -69,7 +68,6 @@ if [ "$target" = "macOS" ]; then
     printf 'APPL????' > "$bundle/Contents/PkgInfo"
 
     ln -s /Applications "$imageDir/Applications"
-    # Dragging the app there makes its directory writable for the venv.
 
     archive="$appName-v$version-$target.dmg"
     hdiutil create -volname "$appName $version" -srcfolder "$imageDir" \

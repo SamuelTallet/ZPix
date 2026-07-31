@@ -6,8 +6,6 @@ set -euo pipefail
 
 resources="$(dirname "$0")/../Resources"
 
-# The app installs its Python environment next to itself,
-# which a read-only disk image doesn't allow.
 if [ ! -w "$resources" ]; then
     osascript -e 'display alert "ZPix" message "Please drag ZPix to your Applications folder, then open it from there."' > /dev/null
     exit 1
