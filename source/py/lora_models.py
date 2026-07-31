@@ -13,6 +13,7 @@ from source.py.blocking_task import BlockingTask
 from source.py.custom_errors import EventAbort
 from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
+from source.py.image_pipe import ImagePipeline
 from source.py.lora_model import LoraModel
 
 
@@ -64,7 +65,7 @@ def swap_lora(
     path: Path,
     image_model: ImageModel,
     t: Callable[[str], str],
-    pipe: DiffusionPipeline | ModularPipeline | None,
+    image_pipe: ImagePipeline,
 ) -> str | None:
     """Swap or load a new LoRA model.
 
@@ -72,7 +73,7 @@ def swap_lora(
         path: Path to a LoRA file.
         image_model: Loaded image model.
         t: Translation function.
-        pipe: Loaded image model pipeline.
+        image_pipe: Loaded image model pipeline.
 
     Returns:
         Trigger word of LoRA model.
@@ -80,6 +81,8 @@ def swap_lora(
     Raises:
         gr.Error: If the pipeline does not support LoRA.
     """
+    pipe = image_pipe.instance
+
     if not isinstance(pipe, LoraBaseMixin):
         raise gr.Error("Pipeline doesn't support LoRA.")
 
@@ -104,7 +107,10 @@ def swap_lora(
         }
 
     try:
-        with BlockingTask.run(t("Please try again, a LoRA was loading.")):
+        with (
+            BlockingTask.run(t("Please try again, a LoRA was loading.")),
+            image_pipe.unhooked(),
+        ):
             pipe.unload_lora_weights()
             pipe.load_lora_weights(
                 bfloat16_lora,

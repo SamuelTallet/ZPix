@@ -423,7 +423,7 @@ if __name__ == "__main__":
                 # If the LoRA selection was validated, shift trigger words
                 # history, unload any LoRA model then load selected LoRA model.
                 lora_swapped = lora_swap_validated.success(
-                    lambda p, tw, m: [tw[1], swap_lora(p, m, t, image_pipe.instance)],
+                    lambda p, tw, m: [tw[1], swap_lora(p, m, t, image_pipe)],
                     inputs=[lora_path, trigger_words, model],
                     outputs=trigger_words,
                 )

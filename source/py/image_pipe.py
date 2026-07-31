@@ -1,7 +1,8 @@
 """Diffusion pipeline wrapper."""
 
 import gc
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 import gradio as gr
 import torch
@@ -359,6 +360,35 @@ class ImagePipeline:
         for component in self.instance.components.values():
             if isinstance(component, torch.nn.Module):
                 remove_hook_from_module(component, recurse=True)
+
+    @contextmanager
+    def unhooked(self) -> Iterator[None]:
+        """Drop the CPU offload hooks for the time of a weight edit.
+
+        Loading a LoRA, Diffusers removes them itself, then restores them with
+        `enable_sequential_cpu_offload()`, which a modular pipeline lacks: it
+        raises, leaving every component unhooked on CPU. Only the Accelerate
+        hooks are visible to it, hence a crash reserved to the components too
+        large for the GPU.
+        """
+        memory_info = get_memory_info()
+
+        if (
+            self.instance is None
+            or isinstance(self.instance, DiffusionPipeline)
+            or self.offload_strategy is None
+            or memory_info is None
+        ):
+            yield
+            return
+
+        self.remove_hooks()
+
+        try:
+            yield
+        finally:
+            # The new weights come in unhooked: re-offload covers them too.
+            self.offload_to_cpu(memory_info[1])
 
     def swap(self, model: ImageModel, t: Callable[[str], str]) -> ImageModel:
         """Swap an image model pipeline, blocking other critical tasks.
