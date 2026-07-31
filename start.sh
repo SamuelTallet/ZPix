@@ -11,11 +11,13 @@ os=$(uname -s); arch=$(uname -m)
 echo "Starting ZPix $(cat ./metadata/VERSION)..."
 echo "Detected platform: $os ($arch)"
 
-# Cache will be stored in the user profile directory.
-if [ "$os" = "Darwin" ]; then
+# Cache directory, maybe overridden by XDG_CACHE_HOME.
+if [ -n "${XDG_CACHE_HOME:-}" ]; then
+    user_cache_dir="$XDG_CACHE_HOME/ZPix"
+elif [ "$os" = "Darwin" ]; then
     user_cache_dir="$HOME/Library/Caches/ZPix"
 else
-    user_cache_dir="$HOME/.cache/zpix"
+    user_cache_dir="$HOME/.cache/ZPix"
 fi
 
 # By default, Python writes bytecode next to sources.

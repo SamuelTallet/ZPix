@@ -8,12 +8,12 @@ from crossfiledialog import choose_folder
 from platformdirs import user_pictures_path
 
 from source.py.custom_logger import logger
-from source.py.user_data_dir import get_user_data_dir
+from source.py.user_data_dir import get_user_preferences_dir
 
 
 def _output_dir_cfg() -> Path:
     """Path to config file storing output directory set by user."""
-    return get_user_data_dir() / "output_dir.cfg"
+    return get_user_preferences_dir() / "output_dir.cfg"
 
 
 def get_output_dir() -> Path:
