@@ -8,6 +8,7 @@ import gradio as gr
 import torch
 from accelerate import cpu_offload
 from accelerate.hooks import remove_hook_from_module
+from accelerate.utils.memory import clear_device_cache
 from diffusers.modular_pipelines.components_manager import custom_offload_with_hook
 from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
@@ -104,6 +105,9 @@ class ImagePipeline:
         self.offload_strategy: FreeMemoryOffloadStrategy | None = None
         """Strategy evicting the components, `None` when none is in play."""
 
+        self.offload_hooks: list = []
+        """Hooks of the evictable components, empty without an offload strategy."""
+
     def load(self, model: ImageModel) -> ImageModel:
         """Load an image model pipeline."""
 
@@ -180,6 +184,7 @@ class ImagePipeline:
         self.memory_budget = None
         self.streams_weights = False
         self.offload_strategy = None
+        self.offload_hooks = []
 
         # On NVIDIA, AMD & Intel ARC GPUs:
         if memory_info and (torch.cuda.is_available() or torch.xpu.is_available()):
@@ -266,8 +271,8 @@ class ImagePipeline:
         needs_tiling = self.memory_budget is None or peak > self.memory_budget
 
         # The strategy sizes its evictions on the weights it moves, not on the
-        # activations behind them: the VAE always looks small enough to fit, so
-        # whatever ran before keeps the room the decode needs. Hence its peak.
+        # activations behind them, so the room those need has to come from here.
+        # The decode peaks highest of a run, which makes it the safe yardstick.
         if self.offload_strategy is not None:
             margin = max(
                 self.memory_reserve, MIN_MEMORY_RESERVE if needs_tiling else peak
@@ -351,6 +356,38 @@ class ImagePipeline:
             for other_hook in hooks:
                 if other_hook is not hook:
                     hook.add_other_hook(other_hook)
+
+        self.offload_hooks = hooks
+        self.free_gpu_before_decode()
+
+    def free_gpu_before_decode(self) -> None:
+        """Evict the siblings of the VAE for the time of a decode.
+
+        A component only evicts others when it *arrives* on the GPU, and the VAE
+        is already there when the picture is decoded: nothing ever makes room for
+        the pass that needs it most, and the driver backs it with host memory.
+        """
+        vae = getattr(self.instance, "vae", None)
+
+        if vae is None or getattr(vae.decode, "frees_gpu", False):
+            return
+
+        decode = vae.decode
+
+        def decode_with_room(*args, **kwargs):
+            device = get_execution_device()
+
+            for hook in self.offload_hooks:
+                if hook.model is not vae and hook.model.device == device:
+                    logger.info(f"Evicting {hook.model_id} before the decode.")
+                    hook.offload()
+
+            clear_device_cache(garbage_collection=True)
+
+            return decode(*args, **kwargs)
+
+        setattr(decode_with_room, "frees_gpu", True)  # noqa: B010
+        vae.decode = decode_with_room
 
     def remove_hooks(self) -> None:
         """Break the reference cycles left by CPU offload."""
