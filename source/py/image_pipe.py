@@ -21,7 +21,11 @@ from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.krea2_flash import install_krea2_flash_attn
-from source.py.offload_strat import FreeMemoryOffloadStrategy
+from source.py.offload_strat import (
+    DENOISER_RANK,
+    ReuseDistanceOffloadStrategy,
+    eviction_rank,
+)
 
 MEMORY_RESERVE_RATIO = 0.35
 """Share of the GPU kept free for the activations of the running component."""
@@ -102,7 +106,7 @@ class ImagePipeline:
         self.streams_weights = False
         """Are the weights streamed submodule by submodule, leaving the GPU free?"""
 
-        self.offload_strategy: FreeMemoryOffloadStrategy | None = None
+        self.offload_strategy: ReuseDistanceOffloadStrategy | None = None
         """Strategy evicting the components, `None` when none is in play."""
 
         self.offload_hooks: list = []
@@ -272,7 +276,8 @@ class ImagePipeline:
 
         # The strategy sizes its evictions on the weights it moves, not on the
         # activations behind them, so the room those need has to come from here.
-        # The decode peaks highest of a run, which makes it the safe yardstick.
+        # The decode peaks highest of a run, which makes it the safe yardstick;
+        # the denoiser's own appetite grows with the resolution just as much.
         if self.offload_strategy is not None:
             margin = max(
                 self.memory_reserve, MIN_MEMORY_RESERVE if needs_tiling else peak
@@ -313,43 +318,56 @@ class ImagePipeline:
         memory_reserve = get_memory_reserve(total_memory)
         self.memory_reserve = memory_reserve
 
-        offload_strategy = FreeMemoryOffloadStrategy(
+        offload_strategy = ReuseDistanceOffloadStrategy(
             memory_reserve_margin=memory_reserve
         )
         self.offload_strategy = offload_strategy
 
-        hooks = []
+        def stream(
+            name: str, component: torch.nn.Module, reason: str, chosen: bool = True
+        ) -> None:
+            """Leave a component on CPU, feeding the GPU one submodule at a time.
+
+            Being picked for it is an optimisation; being forced into it by a
+            component the card can't hold is a limit worth warning about.
+            """
+            cpu_offload(
+                component, device, offload_buffers=len(component._parameters) > 0
+            )
+            log = logger.info if chosen else logger.warning
+            log(f"Streaming {name}: {reason}.")
+
+        candidates = []
 
         for name, component in self.instance.components.items():
             if not isinstance(component, torch.nn.Module):
                 continue
 
             footprint = getattr(component, "get_memory_footprint", None)
-            fits_on_gpu = (
-                footprint is not None and footprint() + memory_reserve <= total_memory
-            )
 
-            # Moving such a component as a whole would saturate the GPU: stream its
-            # weights one submodule at a time, and never elect it for eviction.
-            if not fits_on_gpu:
-                cpu_offload(
+            # Saturates the GPU on its own, so it skips the arbitration below.
+            if footprint is None:
+                stream(name, component, "can't be sized", chosen=False)
+            elif footprint() + memory_reserve > total_memory:
+                stream(
+                    name,
                     component,
-                    device,
-                    offload_buffers=len(component._parameters) > 0,
+                    f"its {footprint() / 1024**3:.1f}GB is too large for this GPU",
+                    chosen=False,
                 )
-                logger.warning(
-                    f"{name} ({footprint() / 1024**3:.1f}GB) is too large "
-                    "for this GPU: streaming it."
-                    if footprint
-                    else f"Can't size {name}: streaming it."
-                )
-                continue
+            else:
+                candidates.append((name, component, footprint()))
 
-            hooks.append(
-                custom_offload_with_hook(
-                    name, component, device, offload_strategy=offload_strategy
-                )
+        candidates = self.stream_least_called_until_resident(
+            candidates, memory_reserve, stream
+        )
+
+        hooks = [
+            custom_offload_with_hook(
+                name, component, device, offload_strategy=offload_strategy
             )
+            for name, component, _ in candidates
+        ]
 
         # Let each component evict its siblings when the GPU runs short.
         for hook in hooks:
@@ -360,12 +378,80 @@ class ImagePipeline:
         self.offload_hooks = hooks
         self.free_gpu_before_decode()
 
+    def stream_least_called_until_resident(
+        self,
+        candidates: list[tuple[str, torch.nn.Module, int]],
+        memory_reserve: int,
+        stream: Callable[[str, torch.nn.Module, str], None],
+    ) -> list[tuple[str, torch.nn.Module, int]]:
+        """Stream the components a run calls once, so the denoiser can stay put.
+
+        Sizing components one by one says nothing about them sharing the card:
+        when the set doesn't fit, someone leaves at every generation. Picking by
+        size elects the denoiser, whose streaming is paid once per step, over an
+        encoder paying once per generation.
+
+        The criterion is thus the call count, not the reuse distance
+        `eviction_rank` measures. That ranking is borrowed because the two
+        coincide here: what runs once is also what isn't wanted again until the
+        next generation. An encoder called at every step would need its own.
+
+        The denoiser is never streamed here; it only is when it can't fit the
+        card at all, which is settled before this runs.
+
+        Args:
+            candidates: Name, component and footprint of what could stay on GPU.
+            memory_reserve: GPU memory to leave free for the activations, in bytes.
+            stream: Callback leaving a component on CPU.
+
+        Returns:
+            The candidates still meant to stay on the GPU.
+        """
+        memory_info = get_memory_info()
+
+        if memory_info is None:
+            return candidates
+
+        free_memory = memory_info[0]
+        # Least called first, largest of those: most room bought per crossing.
+        for name, component, footprint in sorted(
+            candidates, key=lambda c: (eviction_rank(c[0]), -c[2])
+        ):
+            resident = sum(size for _, _, size in candidates)
+
+            if resident + memory_reserve <= free_memory:
+                break
+
+            if eviction_rank(name) >= DENOISER_RANK:
+                break
+
+            # Even streaming all of them leaves the denoiser no room to compute:
+            # it has to go instead, which the caller's own sizing covers.
+            remaining = resident - footprint
+
+            if remaining + MIN_MEMORY_RESERVE > free_memory:
+                break
+
+            stream(
+                name,
+                component,
+                f"{footprint / 1024**3:.1f}GB freed, and it is called once per run",
+            )
+            candidates = [c for c in candidates if c[0] != name]
+
+        return candidates
+
     def free_gpu_before_decode(self) -> None:
-        """Evict the siblings of the VAE for the time of a decode.
+        """Make room for a decode, evicting the furthest used siblings first.
 
         A component only evicts others when it *arrives* on the GPU, and the VAE
         is already there when the picture is decoded: nothing ever makes room for
         the pass that needs it most, and the driver backs it with host memory.
+
+        Only what the pass is short of gets freed. Emptying the GPU wholesale
+        would cost every weight its return trip next generation, reallocated
+        host-side each way by `module.to()`: that churn is what makes a session
+        slower as it goes.
         """
         vae = getattr(self.instance, "vae", None)
 
@@ -376,13 +462,40 @@ class ImagePipeline:
 
         def decode_with_room(*args, **kwargs):
             device = get_execution_device()
+            margin = (
+                self.offload_strategy.memory_reserve_margin
+                if self.offload_strategy is not None
+                else self.memory_reserve
+            )
 
-            for hook in self.offload_hooks:
-                if hook.model is not vae and hook.model.device == device:
-                    logger.info(f"Evicting {hook.model_id} before the decode.")
-                    hook.offload()
-
+            # Cached activation blocks read as used until handed back: reclaim
+            # before measuring, or the figure is stale.
             clear_device_cache(garbage_collection=True)
+            memory_info = get_memory_info()
+            free_memory = memory_info[0] if memory_info else 0
+
+            siblings = sorted(
+                (
+                    hook
+                    for hook in self.offload_hooks
+                    if hook.model is not vae and hook.model.device == device
+                ),
+                key=lambda hook: eviction_rank(hook.model_id),
+            )
+            evicted = False
+
+            for hook in siblings:
+                # An unmeasurable GPU gets the safe path: evict everything.
+                if memory_info is not None and free_memory >= margin:
+                    break
+
+                logger.info(f"Evicting {hook.model_id} before the decode.")
+                hook.offload()
+                free_memory += hook.model.get_memory_footprint()
+                evicted = True
+
+            if evicted:
+                clear_device_cache(garbage_collection=True)
 
             return decode(*args, **kwargs)
 
@@ -447,7 +560,10 @@ class ImagePipeline:
             elif torch.xpu.is_available():
                 torch.xpu.empty_cache()
 
-            return self.load(model)
+            loaded = self.load(model)
+            logger.info(f"Switched to {model.name}.")
+
+            return loaded
 
     def supports_strength(self) -> bool:
         """Does this pipeline accept a `strength` argument?
