@@ -31,16 +31,42 @@ MEMORY_RESERVE_RATIO = 0.35
 """Share of the GPU kept free for the activations of the running component."""
 
 MIN_MEMORY_RESERVE = int(2.5 * 1024**3)
-"""Smallest reserve, in bytes: what a tiled VAE decode peaks at, with a margin."""
+"""Smallest reserve, in bytes: enough that a small GPU is never filled to the
+brim, where the driver starts backing it with host memory."""
 
 MAX_MEMORY_RESERVE = 4 * 1024**3
 """Largest reserve, in bytes: past that, a roomy GPU would evict for nothing."""
 
-BYTES_PER_MEGAPIXEL = int(1.75 * 1024**3)
+VAE_BYTES_PER_MEGAPIXEL = int(0.9 * 1024**3)
 """What one megapixel costs a VAE pass, in bytes.
 
-Measured on a decoder holding 128 channels at full resolution. Other
-architectures may peak elsewhere.
+Measured on one decoder and carried above it, since another architecture may peak
+elsewhere. It sizes the tiling decision alone, a decode costing a fraction of the
+run it ends: tiling on the run's figure would seam pictures that go through in
+one pass.
+"""
+
+PIXELS_PER_MEGAPIXEL = 1e6
+"""Pixels in a megapixel, the unit pictures are sized in here.
+
+Decimal, as the word is used of pictures, where memory stays binary. The bases
+don't meet, which costs nothing as long as the same conversion sizes every
+picture and the figures per megapixel were measured with it.
+"""
+
+SEED_BYTES_PER_MEGAPIXEL = int(3.25 * 1024**3)
+"""What one megapixel is assumed to cost the card, in bytes, weights excluded,
+until a run has been watched.
+
+What a run costs is not what it holds but what the allocator reserves to serve
+it, and the reserve is what has to fit, so the reserve is what gets watched.
+
+This stands for the first generation of a freshly loaded model only, the figure
+being that model's own from the second on. It is architecture bound and doesn't
+travel, a model packing more pixels into a token holding a fraction of the
+tensors of one packing fewer. It errs high on purpose: an over-estimate costs a
+streamed denoiser for one generation, an under-estimate a card filled to the
+brim, which on Windows means a crawl rather than an error.
 """
 
 
@@ -103,8 +129,32 @@ class ImagePipeline:
         self.memory_budget: int | None = None
         """GPU memory a single VAE pass can count on, in bytes; `None` if unknown."""
 
+        self.free_memory = 0
+        """GPU memory free before the pipeline reached the card, in bytes.
+
+        The one reading no weight of ours has distorted, kept as the fallback of
+        `free_memory_without_ours`.
+        """
+
+        self.total_memory = 0
+        """The GPU memory, in bytes, as read when the pipeline was loaded."""
+
         self.streams_weights = False
         """Are the weights streamed submodule by submodule, leaving the GPU free?"""
+
+        self.streams_denoiser = False
+        """Is the denoiser left on CPU, the resolution leaving it no seat?"""
+
+        self.run_bytes_per_megapixel = 0.0
+        """What a run of this model was seen to cost per megapixel, in bytes; 0
+        until one has been watched, the seed standing in until then."""
+
+        self.watched_run: tuple[float, int] | None = None
+        """Megapixels and resident weights of the generation being watched."""
+
+        self.run_margin = 0
+        """GPU memory the coming run needs beyond the weights, in bytes; 0 until
+        a resolution is known."""
 
         self.offload_strategy: ReuseDistanceOffloadStrategy | None = None
         """Strategy evicting the components, `None` when none is in play."""
@@ -186,13 +236,19 @@ class ImagePipeline:
         memory_info = get_memory_info()
         self.memory_reserve = 0
         self.memory_budget = None
+        self.free_memory, self.total_memory = memory_info or (0, 0)
         self.streams_weights = False
+        self.streams_denoiser = False
+        # What the model before cost says nothing about this one.
+        self.run_bytes_per_megapixel = 0.0
+        self.watched_run = None
+        self.run_margin = 0
         self.offload_strategy = None
         self.offload_hooks = []
 
         # On NVIDIA, AMD & Intel ARC GPUs:
         if memory_info and (torch.cuda.is_available() or torch.xpu.is_available()):
-            self.offload_to_cpu(memory_info[1])
+            self.offload_to_cpu(self.total_memory)
 
         # On Mac GPUs:
         elif torch.backends.mps.is_available():
@@ -245,13 +301,152 @@ class ImagePipeline:
         budget = max(self.memory_reserve, free_memory - resident)
 
         logger.info(
-            f"VAE budget: {budget / BYTES_PER_MEGAPIXEL:.1f}MP in one pass, "
+            f"VAE budget: {budget / VAE_BYTES_PER_MEGAPIXEL:.1f}MP in one pass, "
             f"{free_memory / 1024**3:.1f}GB free."
         )
 
         return budget
 
-    def tile_vae_if_needed(self, width: int, height: int) -> None:
+    def free_memory_without_ours(self) -> int:
+        """GPU memory the card would offer with none of our weights on it.
+
+        What is free counts our own resident weights as taken, so a residency
+        decided on it would depend on what the last generation left behind.
+        Adding back only what is ours removes that, while a browser or a game
+        taking its share of the card still shows up in the figure.
+        """
+        memory_info = get_memory_info()
+
+        if memory_info is None or self.instance is None:
+            return self.free_memory
+
+        free_memory = memory_info[0]
+        device = get_execution_device()
+
+        for component in self.instance.components.values():
+            if not isinstance(component, torch.nn.Module):
+                continue
+
+            footprint = getattr(component, "get_memory_footprint", None)
+
+            if footprint is not None and getattr(component, "device", None) == device:
+                free_memory += footprint()
+
+        return free_memory
+
+    def bytes_per_megapixel(self) -> float:
+        """What a run of the loaded model costs the card per megapixel, in bytes.
+
+        Read off the generations already made rather than assumed. No
+        configuration gives it reliably: it follows the token count, hence the
+        patch size and the VAE scale under names that differ by family, and it
+        follows the quantization, the attention backend and whether a reference
+        image is encoded on the way in. The card answers all of it at once.
+        """
+        return self.run_bytes_per_megapixel or SEED_BYTES_PER_MEGAPIXEL
+
+    def watch_run(self, megapixels: float) -> None:
+        """Take the measure of the generation that just ran, to size the next.
+
+        What is read is the reserve the allocator peaked at, not the tensors it
+        held, the reserve being what the card had to give. Taking out the weights
+        meant to sit there leaves what the picture cost. The highest figure per
+        megapixel is the one kept, since leaving too much room costs speed where
+        too little fills the card.
+
+        The gap between the two is not slack to be reclaimed: the allocator gives
+        ground gracefully as the card is taken from it, then falls off a cliff,
+        and sizing on the tensors alone lands a run at its edge.
+
+        Args:
+            megapixels: Size of the picture the next generation will make.
+        """
+        watched, self.watched_run = self.watched_run, None
+        device = get_execution_device()
+        device_module = getattr(torch, device.type, torch.cuda)
+
+        if watched is not None:
+            watched_megapixels, resident = watched
+            cost = device_module.max_memory_reserved(device.index) - resident
+
+            if cost > 0 and watched_megapixels > 0:
+                self.run_bytes_per_megapixel = max(
+                    self.run_bytes_per_megapixel, cost / watched_megapixels
+                )
+
+        device_module.reset_peak_memory_stats(device.index)
+        self.watched_run = (
+            megapixels,
+            sum(hook.model.get_memory_footprint() for hook in self.offload_hooks),
+        )
+
+    def fit_to_resolution(self, width: int, height: int) -> None:
+        """Set the pipeline up for the size of the picture about to be made.
+
+        Args:
+            width: Width of the picture to generate, in pixels.
+            height: Height of the picture to generate, in pixels.
+        """
+        # Blocks kept from the generation before are sized for another picture,
+        # and until handed back they read as taken by the measures below.
+        clear_device_cache(garbage_collection=True)
+
+        megapixels = width * height / PIXELS_PER_MEGAPIXEL
+
+        # Settled first: the residency and the eviction strategy have to leave
+        # the same room, or one hands the other's away.
+        self.run_margin = int(megapixels * self.bytes_per_megapixel())
+
+        self.stream_denoiser_if_needed(megapixels)
+        self.tile_vae_if_needed(megapixels)
+
+        # Last, so that what it records is the residency just settled on.
+        if self.offload_strategy is not None:
+            self.watch_run(megapixels)
+
+    def stream_denoiser_if_needed(self, megapixels: float) -> None:
+        """Take the denoiser off the card when the picture leaves it no seat.
+
+        A run calls the denoiser at every step, so it earns its place while there
+        is one: streamed, its weights pay a trip over the bus each time. Past a
+        resolution those weights and what the loop keeps alive no longer fit
+        together, and where the allocator can't be set to `expandable_segments`,
+        as on Windows, the driver backs the card with host memory rather than
+        fail. The trip over the bus costs less than that overflow.
+
+        Args:
+            megapixels: Size of the picture to generate.
+        """
+        if self.instance is None or self.offload_strategy is None:
+            return
+
+        denoiser = getattr(self.instance, "transformer", None) or getattr(
+            self.instance, "unet", None
+        )
+        footprint = getattr(denoiser, "get_memory_footprint", None)
+
+        if footprint is None:
+            return
+
+        # The margin its caller settled, so the room this frees and the room the
+        # residency leaves stay one number.
+        needed = footprint() + self.run_margin
+        available = self.free_memory_without_ours()
+        streams = needed > available
+
+        if streams == self.streams_denoiser:
+            return
+
+        logger.info(
+            f"{'Streaming' if streams else 'Seating'} the denoiser for "
+            f"{megapixels:.1f}MP: {needed / 1024**3:.1f}GB needed with the run, "
+            f"{available / 1024**3:.1f}GB to be had."
+        )
+
+        self.remove_hooks()
+        self.offload_to_cpu(self.total_memory, stream_denoiser=streams)
+
+    def tile_vae_if_needed(self, megapixels: float) -> None:
         """Tile the VAE work only for the pictures this GPU can't handle in one pass.
 
         The VAE encodes and decodes the picture as a whole, so its peak memory
@@ -260,28 +455,22 @@ class ImagePipeline:
         making when the picture wouldn't go through otherwise.
 
         Args:
-            width: Width of the picture to generate, in pixels.
-            height: Height of the picture to generate, in pixels.
+            megapixels: Size of the picture to generate.
         """
         vae = getattr(self.instance, "vae", None)
 
         if vae is None:
             return
 
-        megapixels = width * height / 1e6
-        peak = int(megapixels * BYTES_PER_MEGAPIXEL)
+        peak = int(megapixels * VAE_BYTES_PER_MEGAPIXEL)
 
         # An unmeasurable GPU gets the safe path rather than an optimistic one.
         needs_tiling = self.memory_budget is None or peak > self.memory_budget
 
         # The strategy sizes its evictions on the weights it moves, not on the
-        # activations behind them, so the room those need has to come from here.
-        # The decode peaks highest of a run, which makes it the safe yardstick;
-        # the denoiser's own appetite grows with the resolution just as much.
+        # tensors behind them, so the room those need has to come from here.
         if self.offload_strategy is not None:
-            margin = max(
-                self.memory_reserve, MIN_MEMORY_RESERVE if needs_tiling else peak
-            )
+            margin = max(self.memory_reserve, self.run_margin)
             self.offload_strategy.memory_reserve_margin = margin
 
             logger.info(
@@ -297,11 +486,13 @@ class ImagePipeline:
         if toggle is not None:
             toggle()
 
-    def offload_to_cpu(self, total_memory: int) -> None:
+    def offload_to_cpu(self, total_memory: int, stream_denoiser: bool = False) -> None:
         """Offload the pipeline weights to CPU, keeping on GPU what fits.
 
         Args:
             total_memory: The GPU memory, in bytes.
+            stream_denoiser: Leave the denoiser on CPU too, the resolution
+                leaving it no room next to the tensors of the run.
         """
         if self.instance is None:
             return
@@ -310,6 +501,8 @@ class ImagePipeline:
             self.instance.enable_sequential_cpu_offload()
             self.streams_weights = True
             return
+
+        self.streams_denoiser = stream_denoiser
 
         # A modular pipeline has no offload helper: replicate the auto CPU offload
         # of its components manager, which can't be used as is because it hooks
@@ -355,11 +548,13 @@ class ImagePipeline:
                     f"its {footprint() / 1024**3:.1f}GB is too large for this GPU",
                     chosen=False,
                 )
+            elif stream_denoiser and eviction_rank(name) >= DENOISER_RANK:
+                stream(name, component, "this resolution wants the whole card")
             else:
                 candidates.append((name, component, footprint()))
 
         candidates = self.stream_least_called_until_resident(
-            candidates, memory_reserve, stream
+            candidates, max(memory_reserve, self.run_margin), stream
         )
 
         hooks = [
@@ -397,22 +592,28 @@ class ImagePipeline:
         next generation. An encoder called at every step would need its own.
 
         The denoiser is never streamed here; it only is when it can't fit the
-        card at all, which is settled before this runs.
+        card at all, or when the resolution leaves it no seat, both settled
+        before this runs.
+
+        The card is measured with our own weights added back, never as it stands.
+        This also runs after a LoRA load, and read raw there the free memory
+        counts those weights as taken: the guards below give up early, and a
+        topology settled at load turns into one that shuttles components in and
+        out at every generation.
 
         Args:
             candidates: Name, component and footprint of what could stay on GPU.
-            memory_reserve: GPU memory to leave free for the activations, in bytes.
+            memory_reserve: GPU memory to leave free for the run, in bytes.
             stream: Callback leaving a component on CPU.
 
         Returns:
             The candidates still meant to stay on the GPU.
         """
-        memory_info = get_memory_info()
+        free_memory = self.free_memory_without_ours()
 
-        if memory_info is None:
+        if not free_memory:
             return candidates
 
-        free_memory = memory_info[0]
         # Least called first, largest of those: most room bought per crossing.
         for name, component, footprint in sorted(
             candidates, key=lambda c: (eviction_rank(c[0]), -c[2])
@@ -521,24 +722,28 @@ class ImagePipeline:
         hooks are visible to it, hence a crash reserved to the components too
         large for the GPU.
         """
-        memory_info = get_memory_info()
-
         if (
             self.instance is None
             or isinstance(self.instance, DiffusionPipeline)
             or self.offload_strategy is None
-            or memory_info is None
+            or not self.total_memory
         ):
             yield
             return
 
+        streams_denoiser = self.streams_denoiser
         self.remove_hooks()
 
         try:
             yield
         finally:
-            # The new weights come in unhooked: re-offload covers them too.
-            self.offload_to_cpu(memory_info[1])
+            # The new weights come in unhooked: re-offload covers them too, and
+            # the denoiser keeps the seat, or the CPU, the resolution gave it.
+            self.offload_to_cpu(self.total_memory, stream_denoiser=streams_denoiser)
+
+            # Shuttling the weights raised a peak no generation held, so the run
+            # being watched is dropped rather than measured wrong.
+            self.watched_run = None
 
     def swap(self, model: ImageModel, t: Callable[[str], str]) -> ImageModel:
         """Swap an image model pipeline, blocking other critical tasks.
