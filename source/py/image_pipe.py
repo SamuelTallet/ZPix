@@ -875,9 +875,18 @@ class ImagePipeline:
 
         The GPU is measured with our own weights added back, never as it stands.
         This also runs after a LoRA load, and read raw there the free memory
-        counts those weights as taken: the guards below give up early, and a
-        topology settled at load turns into one that shuttles components in and
-        out at every generation.
+        counts those weights as taken: the loop below sends off components the
+        GPU had the room to seat, and a reload that changed nothing costs them a
+        crossing at every generation after it.
+
+        Nothing here weighs what would be left against the room a run wants. The
+        set not fitting is the whole of the question, and a component whose next
+        use is furthest off is the one to send off whether or not the denoiser
+        ends up holding its seat: that seat is weighed against the run's own
+        margin by the caller, at every resolution, where this also runs at load
+        with no resolution in hand. A test on the reserve here answers a different
+        question, and answering it early leaves the set that doesn't fit intact,
+        its components evicting one another for the whole session.
 
         Args:
             candidates: Name, component and footprint of what could stay on GPU.
@@ -890,7 +899,7 @@ class ImagePipeline:
         # The components streamed just above handed their blocks to the allocator,
         # not to the driver, and their parameters sit on `meta` where the reading
         # no longer credits them: unreclaimed, that memory is counted by nobody
-        # and the guards below give up on a GPU that has the room.
+        # and the loop below streams components the GPU has the room to seat.
         clear_device_cache(garbage_collection=True)
 
         free_memory = self.free_memory_without_ours()
@@ -920,13 +929,6 @@ class ImagePipeline:
                 break
 
             if eviction_rank(name) >= DENOISER_RANK:
-                break
-
-            # Even streaming all of them leaves the denoiser no room to compute:
-            # it has to go instead, which the caller's own sizing covers.
-            remaining = resident - footprint
-
-            if remaining + MIN_MEMORY_RESERVE > free_memory:
                 break
 
             stream(
