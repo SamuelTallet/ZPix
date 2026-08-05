@@ -3,6 +3,8 @@
 import gc
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from os import environ
+from pathlib import Path
 
 import gradio as gr
 import torch
@@ -27,6 +29,16 @@ from source.py.offload_strat import (
     eviction_rank,
 )
 
+KERNEL_CACHES = {
+    "Triton": "TRITON_CACHE_DIR",
+    "PyTorch Inductor": "TORCHINDUCTOR_CACHE_DIR",
+}
+"""Compilation caches, by the environment variable naming each one's directory.
+
+Triton compiles the kernels, Inductor the graphs calling them: layered rather
+than parallel, they are told apart by where they write. `app.py` sets both.
+"""
+
 MEMORY_RESERVE_RATIO = 0.35
 """Share of the GPU kept free for the activations of the running component."""
 
@@ -41,9 +53,10 @@ VAE_BYTES_PER_MEGAPIXEL = int(0.9 * 1024**3)
 """What one megapixel costs a VAE pass, in bytes.
 
 Measured on one decoder and carried above it, since another architecture may peak
-elsewhere. It sizes the tiling decision alone, a decode costing a fraction of the
-run it ends: tiling on the run's figure would seam pictures that go through in
-one pass.
+elsewhere. It sizes the tiling decision and the room freed before a decode, a
+pass costing a fraction of the run it ends: sizing either on the run's figure
+would seam pictures that go through in one pass, and evict the denoiser to free
+several times what a decode takes.
 """
 
 PIXELS_PER_MEGAPIXEL = 1e6
@@ -52,6 +65,28 @@ PIXELS_PER_MEGAPIXEL = 1e6
 Decimal, as the word is used of pictures, where memory stays binary. The bases
 don't meet, which costs nothing as long as the same conversion sizes every
 picture and the figures per megapixel were measured with it.
+"""
+
+STREAM_HYSTERESIS_RATIO = 0.10
+"""Share of a run's own need the card has to fall short of before a denoiser
+already seen seated is taken off it.
+
+What the card offers swings between two identical generations, the allocator
+keeping workspaces no component owns, and a threshold read bare inside that swing
+flips every generation, re-hooking the pipeline each time. A band, not an
+override: what a browser or a game takes from the card dwarfs it and carries the
+decision.
+"""
+
+SEATED_DENOISERS: set[tuple[int, float]] = set()
+"""Footprint and picture size of every denoiser that has held its seat.
+
+Kept for the life of the process, not the pipeline's: a size come back to is not
+a question reopened. Keyed on the footprint, that being what the seat was weighed
+against, so a model swapped or a LoRA loaded files its own.
+
+Only the seats are filed, never the streamings: one forced by a passing shortage
+would otherwise hold for the whole session.
 """
 
 SEED_BYTES_PER_MEGAPIXEL = int(3.25 * 1024**3)
@@ -68,6 +103,27 @@ tensors of one packing fewer. It errs high on purpose: an over-estimate costs a
 streamed denoiser for one generation, an under-estimate a card filled to the
 brim, which on Windows means a crawl rather than an error.
 """
+
+
+def count_cached_kernels() -> dict[str, int]:
+    """Count the entries each compilation cache holds, by cache name.
+
+    A count, not a size: what a generation adds is what it had to compile, and
+    the figure only has to be comparable with itself.
+    """
+    counts = {}
+
+    for name, variable in KERNEL_CACHES.items():
+        directory = environ.get(variable)
+
+        try:
+            counts[name] = (
+                sum(1 for _ in Path(directory).rglob("*")) if directory else 0
+            )
+        except OSError:
+            counts[name] = 0
+
+    return counts
 
 
 def get_memory_reserve(total_memory: int) -> int:
@@ -149,12 +205,24 @@ class ImagePipeline:
         """What a run of this model was seen to cost per megapixel, in bytes; 0
         until one has been watched, the seed standing in until then."""
 
-        self.watched_run: tuple[float, int] | None = None
-        """Megapixels and resident weights of the generation being watched."""
+        self.watched_run: tuple[float, int, bool] | None = None
+        """Megapixels, resident weights and warming-up state of the generation
+        being watched."""
+
+        self.warms_up_next_run = True
+        """Is the coming generation the one a pipeline warms up on? The first of a
+        freshly loaded model is, and so is the first after a weight edit."""
+
+        self.kernel_cache_counts: dict[str, int] = {}
+        """What each compilation cache held before the warming-up generation."""
 
         self.run_margin = 0
         """GPU memory the coming run needs beyond the weights, in bytes; 0 until
         a resolution is known."""
+
+        self.decode_margin = 0
+        """GPU memory a VAE pass needs beyond its weights, in bytes; 0 until a
+        resolution is known."""
 
         self.offload_strategy: ReuseDistanceOffloadStrategy | None = None
         """Strategy evicting the components, `None` when none is in play."""
@@ -242,7 +310,10 @@ class ImagePipeline:
         # What the model before cost says nothing about this one.
         self.run_bytes_per_megapixel = 0.0
         self.watched_run = None
+        self.warms_up_next_run = True
+        self.kernel_cache_counts = {}
         self.run_margin = 0
+        self.decode_margin = 0
         self.offload_strategy = None
         self.offload_hooks = []
 
@@ -345,7 +416,7 @@ class ImagePipeline:
         """
         return self.run_bytes_per_megapixel or SEED_BYTES_PER_MEGAPIXEL
 
-    def watch_run(self, megapixels: float) -> None:
+    def measure_run(self) -> None:
         """Take the measure of the generation that just ran, to size the next.
 
         What is read is the reserve the allocator peaked at, not the tensors it
@@ -358,26 +429,97 @@ class ImagePipeline:
         ground gracefully as the card is taken from it, then falls off a cliff,
         and sizing on the tensors alone lands a run at its edge.
 
+        The generation a pipeline warms up on is not measured, compiled or not:
+        autotuning reserves a workspace per kernel variant it benchmarks, and the
+        weights climb onto the card inside that same run. Either peak is the
+        warming-up's rather than the picture's.
+
+        Read before the coming residency is settled, so the figure sizing it is
+        the one the generation before left, not one a generation stale.
+        """
+        watched, self.watched_run = self.watched_run, None
+
+        if watched is None:
+            return
+
+        device = get_execution_device()
+        device_module = getattr(torch, device.type, torch.cuda)
+        watched_megapixels, resident, warmed_up = watched
+        cost = device_module.max_memory_reserved(device.index) - resident
+
+        if warmed_up:
+            self.log_compiled_kernels()
+        elif cost > 0 and watched_megapixels > 0:
+            self.run_bytes_per_megapixel = max(
+                self.run_bytes_per_megapixel, cost / watched_megapixels
+            )
+
+            logger.info(
+                f"A run of this model costs "
+                f"{self.run_bytes_per_megapixel / 1024**3:.1f}GB per megapixel, "
+                f"{cost / watched_megapixels / 1024**3:.1f}GB as just measured."
+            )
+
+    def watch_run(self, megapixels: float) -> None:
+        """Note what the coming generation is to be measured against.
+
         Args:
             megapixels: Size of the picture the next generation will make.
         """
-        watched, self.watched_run = self.watched_run, None
         device = get_execution_device()
         device_module = getattr(torch, device.type, torch.cuda)
 
-        if watched is not None:
-            watched_megapixels, resident = watched
-            cost = device_module.max_memory_reserved(device.index) - resident
-
-            if cost > 0 and watched_megapixels > 0:
-                self.run_bytes_per_megapixel = max(
-                    self.run_bytes_per_megapixel, cost / watched_megapixels
-                )
-
+        # Reset last, so the weights this fit shuttled land outside the window the
+        # coming generation is measured over.
         device_module.reset_peak_memory_stats(device.index)
+
+        # A streamed denoiser holds no seat: the peak its submodules raise
+        # crossing the bus stands against no residency.
         self.watched_run = (
-            megapixels,
-            sum(hook.model.get_memory_footprint() for hook in self.offload_hooks),
+            None
+            if self.streams_denoiser
+            else (
+                megapixels,
+                sum(hook.model.get_memory_footprint() for hook in self.offload_hooks),
+                self.warms_up_next_run,
+            )
+        )
+
+        if self.warms_up_next_run:
+            self.kernel_cache_counts = count_cached_kernels()
+            logger.info(
+                "Warming up Triton and PyTorch Inductor caches... "
+                "Next generation will be longer."
+            )
+
+        self.warms_up_next_run = False
+
+    def log_compiled_kernels(self) -> None:
+        """Say what the generation a pipeline warmed up on wrote to each cache.
+
+        Nothing written means the caches already held it all, and the generation
+        was the longer one for putting the weights on the card alone.
+        """
+        counts = count_cached_kernels()
+
+        # Read off the snapshot, never off the caches: without one there is no
+        # growth to report.
+        grown = [
+            (name, counts[name] - held)
+            for name, held in self.kernel_cache_counts.items()
+            if counts.get(name, 0) > held
+        ]
+
+        # The unit spelled out once, shortened for the caches after it.
+        written = [
+            f"{count} cache entries for {name}" if index == 0 else f"{count} for {name}"
+            for index, (name, count) in enumerate(grown)
+        ]
+
+        logger.info(
+            f"Compilation wrote {', '.join(written)}."
+            if written
+            else "Compilation wrote nothing: the caches already held these kernels."
         )
 
     def fit_to_resolution(self, width: int, height: int) -> None:
@@ -392,6 +534,10 @@ class ImagePipeline:
         clear_device_cache(garbage_collection=True)
 
         megapixels = width * height / PIXELS_PER_MEGAPIXEL
+
+        # Measured before anything is settled, its figure being what settles it.
+        if self.offload_strategy is not None:
+            self.measure_run()
 
         # Settled first: the residency and the eviction strategy have to leave
         # the same room, or one hands the other's away.
@@ -408,11 +554,17 @@ class ImagePipeline:
         """Take the denoiser off the card when the picture leaves it no seat.
 
         A run calls the denoiser at every step, so it earns its place while there
-        is one: streamed, its weights pay a trip over the bus each time. Past a
-        resolution those weights and what the loop keeps alive no longer fit
-        together, and where the allocator can't be set to `expandable_segments`,
-        as on Windows, the driver backs the card with host memory rather than
-        fail. The trip over the bus costs less than that overflow.
+        is one: streamed, its weights pay a trip over the bus each time, and every
+        sibling follows it off the card. Past a resolution those weights and what
+        the loop keeps alive no longer fit together, and where the allocator can't
+        be set to `expandable_segments`, as on Windows, the driver backs the card
+        with host memory rather than fail.
+
+        The trip over the bus costs less than that overflow, and by a wide margin.
+        The whole of the run's margin is what the seat is weighed against for that
+        reason: seating a 1080p denoiser against half of it, on an 8GB card, was
+        measured at 26.6s an iteration where streaming took 8.4s. Do not trade
+        this threshold for room that isn't there.
 
         Args:
             megapixels: Size of the picture to generate.
@@ -430,9 +582,19 @@ class ImagePipeline:
 
         # The margin its caller settled, so the room this frees and the room the
         # residency leaves stay one number.
-        needed = footprint() + self.run_margin
+        weights = footprint()
+        needed = weights + self.run_margin
         available = self.free_memory_without_ours()
-        streams = needed > available
+
+        # A swing in what the card offers is noise, not an answer that changed: a
+        # size seen to hold its seat keeps it until the card falls short by more
+        # than that swing. One never seated is answered on the estimate alone.
+        seat = (weights, megapixels)
+        band = int(STREAM_HYSTERESIS_RATIO * needed) if seat in SEATED_DENOISERS else 0
+        streams = needed > available + band
+
+        if not streams:
+            SEATED_DENOISERS.add(seat)
 
         if streams == self.streams_denoiser:
             return
@@ -467,16 +629,31 @@ class ImagePipeline:
         # An unmeasurable GPU gets the safe path rather than an optimistic one.
         needs_tiling = self.memory_budget is None or peak > self.memory_budget
 
+        # What the pass itself needs, not the run around it, which would evict a
+        # seated denoiser to free several times the room a decode takes.
+        #
+        # Streamed, that denoiser holds no seat to protect and the argument falls:
+        # clearing the card costs it nothing, and leaves the submodules crossing
+        # the bus the room they flow through. Tiling bounds the pass unmeasurably,
+        # so the reserve stands in for the figure there.
+        if self.streams_denoiser:
+            self.decode_margin = max(self.memory_reserve, self.run_margin)
+        elif needs_tiling:
+            self.decode_margin = self.memory_reserve
+        else:
+            self.decode_margin = peak
+
         # The strategy sizes its evictions on the weights it moves, not on the
         # tensors behind them, so the room those need has to come from here.
         if self.offload_strategy is not None:
-            margin = max(self.memory_reserve, self.run_margin)
-            self.offload_strategy.memory_reserve_margin = margin
+            self.offload_strategy.memory_reserve_margin = max(
+                self.memory_reserve, self.run_margin
+            )
 
             logger.info(
                 f"Decoding {megapixels:.1f}MP "
                 f"{'tiled' if needs_tiling else 'in one pass'}, "
-                f"evicting down to {margin / 1024**3:.1f}GB free."
+                f"evicting down to {self.decode_margin / 1024**3:.1f}GB free."
             )
 
         toggle = getattr(
@@ -609,6 +786,12 @@ class ImagePipeline:
         Returns:
             The candidates still meant to stay on the GPU.
         """
+        # The components streamed just above handed their blocks to the allocator,
+        # not to the driver, and their parameters sit on `meta` where the reading
+        # no longer credits them: unreclaimed, that memory is counted by nobody
+        # and the guards below give up on a card that has the room.
+        clear_device_cache(garbage_collection=True)
+
         free_memory = self.free_memory_without_ours()
 
         if not free_memory:
@@ -663,11 +846,9 @@ class ImagePipeline:
 
         def decode_with_room(*args, **kwargs):
             device = get_execution_device()
-            margin = (
-                self.offload_strategy.memory_reserve_margin
-                if self.offload_strategy is not None
-                else self.memory_reserve
-            )
+            # The pass's own margin, never the run's: the siblings freed here are
+            # wanted again at the next generation.
+            margin = self.decode_margin or self.memory_reserve
 
             # Cached activation blocks read as used until handed back: reclaim
             # before measuring, or the figure is stale.
@@ -744,6 +925,10 @@ class ImagePipeline:
             # Shuttling the weights raised a peak no generation held, so the run
             # being watched is dropped rather than measured wrong.
             self.watched_run = None
+
+            # The new weights want a warming-up run. The seat found for the
+            # denoiser needs no undoing, filed under a footprint they move.
+            self.warms_up_next_run = True
 
     def swap(self, model: ImageModel, t: Callable[[str], str]) -> ImageModel:
         """Swap an image model pipeline, blocking other critical tasks.
