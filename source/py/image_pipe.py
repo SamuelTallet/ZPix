@@ -109,10 +109,8 @@ for the session: the room it asks for is room a residency is refused.
 
 SEED_BYTES_PER_MEGAPIXEL = int(2.5 * 1024**3)
 """What one megapixel is assumed to cost the GPU, in bytes, weights excluded,
-until a run has been watched.
-
-What a run costs is not what it holds but what the allocator reserves to serve
-it, and the reserve is what has to fit, so the reserve is what gets watched.
+until a run has been watched. What the allocator reserves to serve a run, not
+what its tensors hold, the reserve being what has to fit.
 
 This stands for the first generation of a freshly loaded model only, the figure
 being that model's own from the second on. It is architecture bound and doesn't
@@ -120,11 +118,11 @@ travel, a model packing more pixels into a token holding a fraction of the
 tensors of one packing fewer.
 
 Set just above the cheapest run measured. It erred high before, an under-estimate
-filling the GPU meaning a crawl on Windows rather than an error. But a seed high
+filling the GPU meaning a crawl on Windows rather than an error, but a seed high
 enough to refuse a seat that would have held costs the same one generation as one
-too low, so that caution was buying nothing. What bounds it is resolution: it
-would have to fall well under anything measured for a high-resolution denoiser to
-be seated, so those stay streamed whatever it is set to.
+too low. What bounds it is resolution: it would have to fall well under anything
+measured for a high-resolution denoiser to be seated, so those stay streamed
+whatever it is set to.
 """
 
 
@@ -298,8 +296,8 @@ class ImagePipeline:
                     apply_sdnq_options_to_model(component, use_quantized_matmul=True)
                     logger.info(f"SDNQ Quantized MatMul enabled for {component_name}.")
 
-            # The backend is picked process-wide, not per pipeline, so a swap
-            # would otherwise inherit whatever the family before it chose.
+            # Picked process-wide, not per pipeline: a swap would otherwise
+            # inherit whatever the family before it chose.
             self.instance.transformer.set_attention_backend("native")
 
             if model.family in ("Z-Image", "FLUX", "FLUX.2"):
@@ -311,7 +309,6 @@ class ImagePipeline:
 
             # These two carry attention the backend refuses, Anima because its
             # text conditioner masks it, Krea 2 because of its grouped queries.
-            # Only their transformer takes the kernel, one processor at a time.
             elif model.family == "Anima":
                 try:
                     install_anima_flash_attn(self.instance)
@@ -329,24 +326,23 @@ class ImagePipeline:
             logger.warning(f"Can't apply memory format optimization: {e}")
 
         # Dropped before the reclaim below, and before anything is measured: each
-        # hook holds the component it offloads, and they hold one another, so the
-        # weights of the pipeline swapped out stay on the GPU while this list
-        # names them. A budget read over them is the one the model before left.
+        # hook holds the component it offloads, so the weights of the pipeline
+        # swapped out stay on the GPU while this list names them.
         self.offload_strategy = None
         self.offload_hooks = []
 
         clear_device_cache(garbage_collection=True)
 
-        # Read before anything reaches the GPU: this is what the weights and the
-        # activations will share.
+        # Read before anything reaches the GPU: the weights and the activations
+        # will share this.
         memory_info = get_memory_info()
         self.memory_reserve = 0
         self.memory_budget = None
         self.free_memory, self.total_memory = memory_info or (0, 0)
         self.streams_weights = False
         self.streams_denoiser = False
-        # A model already measured in this session keeps its figure; what another
-        # one cost says nothing about it, and the seed stands in.
+        # A model already measured keeps its figure; what another one cost says
+        # nothing about it, and the seed stands in.
         self.run_bytes_per_megapixel = RUN_COSTS_PER_MEGAPIXEL.get(
             self.denoiser_footprint(), 0.0
         )
@@ -443,8 +439,8 @@ class ImagePipeline:
         reserved = device_module.memory_reserved(device.index)
         allocated = device_module.memory_allocated(device.index)
 
-        # Nothing of ours left is the expected reading, and it needs no figures
-        # to be told: only a reserve that survived the reclaim earns the split.
+        # Nothing of ours left needs no figures to be told: only a reserve that
+        # survived the reclaim earns the split.
         ours = (
             f"{reserved / 1024**3:.1f}GB of it held by our allocator, "
             f"{allocated / 1024**3:.1f}GB of that still allocated"
@@ -577,8 +573,8 @@ class ImagePipeline:
         device = get_execution_device()
         device_module = getattr(torch, device.type, torch.cuda)
 
-        # Reset last, so the weights this fit shuttled land outside the window the
-        # coming generation is measured over.
+        # Reset last, so the weights this fit shuttled fall outside the window
+        # the coming generation is measured over.
         device_module.reset_peak_memory_stats(device.index)
 
         # A streamed denoiser holds no seat: the peak its submodules raise
@@ -613,10 +609,9 @@ class ImagePipeline:
         counts = count_cached_kernels()
 
         # Read off the snapshot, never off the caches: without one there is no
-        # growth to report.
-        #
-        # Named, never counted: how many entries a cache took answers nothing,
-        # where one cache growing alone points at the other's directory.
+        # growth to report. Named, never counted: how many entries a cache took
+        # answers nothing, where one growing alone points at the other's
+        # directory.
         grown = [
             name
             for name, held in self.kernel_cache_counts.items()
@@ -647,8 +642,8 @@ class ImagePipeline:
         if self.offload_strategy is not None:
             self.measure_run()
 
-        # What the run wants beyond the weights, and the one figure the denoiser's
-        # seat is weighed against.
+        # What the run wants beyond the weights, and all that the denoiser's seat
+        # is weighed against.
         self.run_margin = int(megapixels * self.bytes_per_megapixel())
 
         self.stream_denoiser_if_needed(megapixels)
@@ -689,8 +684,8 @@ class ImagePipeline:
         available = self.free_memory_without_ours()
 
         # A swing in what the GPU offers is noise, not an answer that changed: a
-        # size seen to hold its seat keeps it until the GPU falls short by more
-        # than that swing. One never seated is answered on the estimate alone.
+        # size seen seated keeps its seat until the GPU falls short by more than
+        # that swing. One never seated is answered on the estimate alone.
         seat = (weights, megapixels)
         band = int(STREAM_HYSTERESIS_RATIO * needed) if seat in SEATED_DENOISERS else 0
         streams = needed > available + band
@@ -732,15 +727,14 @@ class ImagePipeline:
         needs_tiling = self.memory_budget is None or peak > self.memory_budget
 
         # What the pass itself needs, the reserve standing in where it can't be
-        # sized: tiling bounds a pass unmeasurably, and a streamed denoiser leaves
-        # its siblings little to fit around.
+        # sized: tiling bounds a pass unmeasurably, and a streamed denoiser
+        # leaves its siblings little to fit around.
         streams = self.streams_denoiser or needs_tiling
         self.decode_margin = self.memory_reserve if streams else peak
 
-        # The room a run's tensors want beyond the weights the strategy moves is
-        # not asked for here: a margin sized on the run has it evict every sibling
-        # on each arrival, where the allocator would have given ground instead.
-        # Only the seat of the denoiser is weighed against that figure.
+        # The run's own margin is not asked for here: sized on it, the strategy
+        # would evict every sibling on each arrival, where the allocator gives
+        # ground instead. Only the denoiser's seat is weighed against it.
         if self.offload_strategy is not None:
             self.offload_strategy.memory_reserve_margin = self.memory_reserve
 
@@ -776,8 +770,8 @@ class ImagePipeline:
         self.streams_denoiser = stream_denoiser
 
         # A modular pipeline has no offload helper: replicate the auto CPU offload
-        # of its components manager, which can't be used as is because it hooks
-        # every component, including those too large to stay on the GPU.
+        # of its components manager, which hooks every component, including those
+        # too large to stay on the GPU.
         device = get_execution_device()
         memory_reserve = get_memory_reserve(total_memory)
         self.memory_reserve = memory_reserve
@@ -904,9 +898,8 @@ class ImagePipeline:
             The candidates still meant to stay on the GPU.
         """
         # The components streamed just above handed their blocks to the allocator,
-        # not to the driver, and their parameters sit on `meta` where the reading
-        # no longer credits them: unreclaimed, that memory is counted by nobody
-        # and the loop below streams components the GPU has the room to seat.
+        # not to the driver: unreclaimed, that memory is counted by nobody and the
+        # loop below streams components the GPU has the room to seat.
         clear_device_cache(garbage_collection=True)
 
         free_memory = self.free_memory_without_ours()
@@ -927,10 +920,9 @@ class ImagePipeline:
             resident = sum(size for _, _, size in candidates)
             fits = resident + memory_reserve <= free_memory
 
-            # A streamed denoiser asks the strategy for nothing: its submodules
-            # arrive by a hook of their own, where the eviction it would have set
-            # off never fires. So the room an encoder holds is room its flow never
-            # gets, and the encoders leave whether they would have fit or not.
+            # A streamed denoiser asks the strategy for nothing, its submodules
+            # arriving by a hook of their own: the room an encoder holds is room
+            # its flow never gets, so the encoders leave whether they fit or not.
             if fits and not (denoiser_streams and eviction_rank(name) == ENCODER_RANK):
                 break
 
@@ -1046,13 +1038,12 @@ class ImagePipeline:
             # the denoiser keeps the seat, or the CPU, the resolution gave it.
             self.offload_to_cpu(self.total_memory, stream_denoiser=streams_denoiser)
 
-            # Shuttling the weights raised a peak no generation held, so the run
-            # being watched is dropped rather than measured wrong. The kernels
-            # compiled before it still stand.
+            # Shuttling the weights raised a peak no generation held: the run
+            # being watched is dropped rather than measured wrong.
             self.watched_run = None
 
-            # The new weights want a warming-up run. The seat found for the
-            # denoiser needs no undoing, filed under a footprint they move.
+            # The new weights want a warming-up run. The denoiser's seat needs no
+            # undoing, filed under a footprint they move.
             self.warms_up_next_run = True
 
     def swap(self, model: ImageModel, t: Callable[[str], str]) -> ImageModel:
@@ -1069,11 +1060,10 @@ class ImagePipeline:
             # and its VRAM makes the next auto CPU offload overly aggressive.
             self.instance = None
 
-            # Its compiled graphs hold CUDA graph pools of their own, which no
-            # `empty_cache()` reaches: kept, the GPU carries them for a model that
-            # will never call them again, and the residency of the one arriving is
-            # settled on a smaller GPU than it has. The kernels stay on disk, so
-            # what this costs is a cache read on the warming-up generation.
+            # Its compiled graphs hold CUDA graph pools no `empty_cache()`
+            # reaches: kept, they settle the residency of the model arriving on a
+            # smaller GPU than it has. The kernels stay on disk, so what this
+            # costs is a cache read on the warming-up generation.
             try:
                 torch.compiler.reset()
             except Exception as e:  # noqa: BLE001
