@@ -260,6 +260,7 @@ class ImagePipeline:
 
     def load(self, model: ImageModel) -> ImageModel:
         """Load an image model pipeline."""
+        logger.info(f"{model.name} model to be loaded.")
 
         def create_pipe(model_id: str) -> DiffusionPipeline | ModularPipeline:
             """Create a standard pipeline or a modular one."""
@@ -439,12 +440,20 @@ class ImagePipeline:
         device_module = getattr(torch, device.type, torch.cuda)
         free_memory, total_memory = memory_info
 
+        reserved = device_module.memory_reserved(device.index)
+        allocated = device_module.memory_allocated(device.index)
+
+        # Nothing of ours left is the expected reading, and it needs no figures
+        # to be told: only a reserve that survived the reclaim earns the split.
+        ours = (
+            f"{reserved / 1024**3:.1f}GB of it held by our allocator, "
+            f"{allocated / 1024**3:.1f}GB of that still allocated"
+            if reserved
+            else "none of it ours"
+        )
+
         logger.info(
-            f"GPU has {(total_memory - free_memory) / 1024**3:.1f}GB taken, "
-            f"{device_module.memory_reserved(device.index) / 1024**3:.1f}GB of it "
-            f"reserved by the allocator and "
-            f"{device_module.memory_allocated(device.index) / 1024**3:.1f}GB "
-            f"still allocated."
+            f"GPU has {(total_memory - free_memory) / 1024**3:.1f}GB taken, {ours}."
         )
 
     def free_memory_without_ours(self) -> int:
@@ -605,22 +614,20 @@ class ImagePipeline:
 
         # Read off the snapshot, never off the caches: without one there is no
         # growth to report.
+        #
+        # Named, never counted: how many entries a cache took answers nothing,
+        # where one cache growing alone points at the other's directory.
         grown = [
-            (name, counts[name] - held)
+            name
             for name, held in self.kernel_cache_counts.items()
             if counts.get(name, 0) > held
         ]
 
-        # The unit spelled out once, shortened for the caches after it.
-        written = [
-            f"{count} cache entries for {name}" if index == 0 else f"{count} for {name}"
-            for index, (name, count) in enumerate(grown)
-        ]
-
         logger.info(
-            f"Compilation wrote {', '.join(written)}."
-            if written
-            else "Compilation wrote nothing: the caches already held these kernels."
+            f"Compilation wrote to {' and '.join(grown)} "
+            f"cache{'s' if len(grown) > 1 else ''}."
+            if grown
+            else "Compilation wrote nothing: these kernels were already cached."
         )
 
     def fit_to_resolution(self, width: int, height: int) -> None:
@@ -695,9 +702,9 @@ class ImagePipeline:
             return
 
         logger.info(
-            f"{'Streaming' if streams else 'Seating'} the denoiser for "
-            f"{megapixels:.1f}MP: {needed / 1024**3:.1f}GB needed with the run, "
-            f"{available / 1024**3:.1f}GB to be had."
+            f"{megapixels:.1f}MP needs {needed / 1024**3:.1f}GB run included, "
+            f"GPU offers {available / 1024**3:.1f}GB, so we "
+            f"{'stream' if streams else 'seat'} the denoiser."
         )
 
         self.remove_hooks()
@@ -918,24 +925,26 @@ class ImagePipeline:
             candidates, key=lambda c: (eviction_rank(c[0]), -c[2])
         ):
             resident = sum(size for _, _, size in candidates)
+            fits = resident + memory_reserve <= free_memory
 
             # A streamed denoiser asks the strategy for nothing: its submodules
             # arrive by a hook of their own, where the eviction it would have set
             # off never fires. So the room an encoder holds is room its flow never
             # gets, and the encoders leave whether they would have fit or not.
-            if resident + memory_reserve <= free_memory and not (
-                denoiser_streams and eviction_rank(name) == ENCODER_RANK
-            ):
+            if fits and not (denoiser_streams and eviction_rank(name) == ENCODER_RANK):
                 break
 
             if eviction_rank(name) >= DENOISER_RANK:
                 break
 
-            stream(
-                name,
-                component,
-                f"{footprint / 1024**3:.1f}GB freed, and it is called once per run",
+            # Fitting and streamed anyway is the case just above, told apart so
+            # the line doesn't blame a shortage of room there was none of.
+            reason = (
+                "room the streamed denoiser would never use"
+                if fits
+                else "the least called of what's resident"
             )
+            stream(name, component, f"{footprint / 1024**3:.1f}GB freed, {reason}")
             candidates = [c for c in candidates if c[0] != name]
 
         return candidates
