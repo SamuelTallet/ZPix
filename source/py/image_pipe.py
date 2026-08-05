@@ -539,8 +539,8 @@ class ImagePipeline:
         if self.offload_strategy is not None:
             self.measure_run()
 
-        # Settled first: the residency and the eviction strategy have to leave
-        # the same room, or one hands the other's away.
+        # What the run wants beyond the weights, and the one figure the denoiser's
+        # seat is weighed against.
         self.run_margin = int(megapixels * self.bytes_per_megapixel())
 
         self.stream_denoiser_if_needed(megapixels)
@@ -580,8 +580,7 @@ class ImagePipeline:
         if footprint is None:
             return
 
-        # The margin its caller settled, so the room this frees and the room the
-        # residency leaves stay one number.
+        # The whole of the run's margin, its caller having settled the figure.
         weights = footprint()
         needed = weights + self.run_margin
         available = self.free_memory_without_ours()
@@ -629,26 +628,18 @@ class ImagePipeline:
         # An unmeasurable GPU gets the safe path rather than an optimistic one.
         needs_tiling = self.memory_budget is None or peak > self.memory_budget
 
-        # What the pass itself needs, not the run around it, which would evict a
-        # seated denoiser to free several times the room a decode takes.
-        #
-        # Streamed, that denoiser holds no seat to protect and the argument falls:
-        # clearing the card costs it nothing, and leaves the submodules crossing
-        # the bus the room they flow through. Tiling bounds the pass unmeasurably,
-        # so the reserve stands in for the figure there.
-        if self.streams_denoiser:
-            self.decode_margin = max(self.memory_reserve, self.run_margin)
-        elif needs_tiling:
-            self.decode_margin = self.memory_reserve
-        else:
-            self.decode_margin = peak
+        # What the pass itself needs, the reserve standing in where it can't be
+        # sized: tiling bounds a pass unmeasurably, and a streamed denoiser leaves
+        # its siblings little to fit around.
+        streams = self.streams_denoiser or needs_tiling
+        self.decode_margin = self.memory_reserve if streams else peak
 
-        # The strategy sizes its evictions on the weights it moves, not on the
-        # tensors behind them, so the room those need has to come from here.
+        # The room a run's tensors want beyond the weights the strategy moves is
+        # not asked for here: a margin sized on the run has it evict every sibling
+        # on each arrival, where the allocator would have given ground instead.
+        # Only the seat of the denoiser is weighed against that figure.
         if self.offload_strategy is not None:
-            self.offload_strategy.memory_reserve_margin = max(
-                self.memory_reserve, self.run_margin
-            )
+            self.offload_strategy.memory_reserve_margin = self.memory_reserve
 
             logger.info(
                 f"Decoding {megapixels:.1f}MP "
@@ -731,7 +722,7 @@ class ImagePipeline:
                 candidates.append((name, component, footprint()))
 
         candidates = self.stream_least_called_until_resident(
-            candidates, max(memory_reserve, self.run_margin), stream
+            candidates, memory_reserve, stream
         )
 
         hooks = [
