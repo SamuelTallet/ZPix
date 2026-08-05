@@ -956,6 +956,17 @@ class ImagePipeline:
             # Drop the old pipeline before collecting, otherwise it stays alive
             # and its VRAM makes the next auto CPU offload overly aggressive.
             self.instance = None
+
+            # Its compiled graphs hold CUDA graph pools of their own, which no
+            # `empty_cache()` reaches: kept, the card carries them for a model that
+            # will never call them again, and the residency of the one arriving is
+            # settled on a smaller card than it has. The kernels stay on disk, so
+            # what this costs is a cache read on the warming-up generation.
+            try:
+                torch.compiler.reset()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Can't reset the compiler between models: {e}")
+
             gc.collect()
 
             if torch.cuda.is_available():
