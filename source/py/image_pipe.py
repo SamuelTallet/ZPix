@@ -299,6 +299,15 @@ class ImagePipeline:
         except (AttributeError, RuntimeError) as e:
             logger.warning(f"Can't apply memory format optimization: {e}")
 
+        # Dropped before the reclaim below, and before anything is measured: each
+        # hook holds the component it offloads, and they hold one another, so the
+        # weights of the pipeline swapped out stay on the card while this list
+        # names them. A budget read over them is the one the model before left.
+        self.offload_strategy = None
+        self.offload_hooks = []
+
+        clear_device_cache(garbage_collection=True)
+
         # Read before anything reaches the GPU: this is what the weights and the
         # activations will share.
         memory_info = get_memory_info()
@@ -314,8 +323,6 @@ class ImagePipeline:
         self.kernel_cache_counts = {}
         self.run_margin = 0
         self.decode_margin = 0
-        self.offload_strategy = None
-        self.offload_hooks = []
 
         # On NVIDIA, AMD & Intel ARC GPUs:
         if memory_info and (torch.cuda.is_available() or torch.xpu.is_available()):
