@@ -258,7 +258,6 @@ class ImagePipeline:
 
     def load(self, model: ImageModel) -> ImageModel:
         """Load an image model pipeline."""
-        logger.info(f"{model.name} model to be loaded.")
 
         def create_pipe(model_id: str) -> DiffusionPipeline | ModularPipeline:
             """Create a standard pipeline or a modular one."""
@@ -622,7 +621,7 @@ class ImagePipeline:
             f"Compilation wrote to {' and '.join(grown)} "
             f"cache{'s' if len(grown) > 1 else ''}."
             if grown
-            else "Compilation wrote nothing: these kernels were already cached."
+            else "Compilation wrote nothing: these kernels were previously cached."
         )
 
     def fit_to_resolution(self, width: int, height: int) -> None:
