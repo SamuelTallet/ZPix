@@ -557,10 +557,18 @@ class ImagePipeline:
                 self.run_bytes_per_megapixel
             )
 
+            # The two read the same whenever the measure rose, the figure then
+            # being the measure. Said once in that case.
+            retained = f"{self.run_bytes_per_megapixel / 1024**3:.1f}GB"
+            just_measured = f"{measured / 1024**3:.1f}GB"
+
             logger.info(
-                f"A run of this model costs "
-                f"{self.run_bytes_per_megapixel / 1024**3:.1f}GB per megapixel, "
-                f"{measured / 1024**3:.1f}GB as just measured."
+                f"A run of this model costs {retained} per megapixel"
+                + (
+                    f", {just_measured} as just measured."
+                    if just_measured != retained
+                    else "."
+                )
             )
 
     def watch_run(self, megapixels: float) -> None:
