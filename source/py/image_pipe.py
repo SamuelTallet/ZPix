@@ -228,13 +228,15 @@ class ImagePipeline:
         """What a run of this model was seen to cost per megapixel, in bytes; 0
         until one has been watched, the seed standing in until then."""
 
-        self.watched_run: tuple[float, int, bool] | None = None
-        """Megapixels, resident weights and warming-up state of the generation
-        being watched."""
+        self.watched_run: tuple[float, int] | None = None
+        """Megapixels and resident weights of the generation being watched."""
 
         self.warms_up_next_run = True
         """Is the coming generation the one a pipeline warms up on? The first of a
         freshly loaded model is, and so is the first after a weight edit."""
+
+        self.warmed_up_run = False
+        """Was the generation that just ran the one the pipeline warmed up on?"""
 
         self.kernel_cache_counts: dict[str, int] = {}
         """What each compilation cache held before the warming-up generation."""
@@ -349,6 +351,7 @@ class ImagePipeline:
         )
         self.watched_run = None
         self.warms_up_next_run = True
+        self.warmed_up_run = False
         self.kernel_cache_counts = {}
         self.streamed_reasons = {}
         self.run_margin = 0
@@ -514,24 +517,29 @@ class ImagePipeline:
         The generation a pipeline warms up on is not measured, compiled or not:
         autotuning reserves a workspace per kernel variant it benchmarks, and the
         weights climb onto the GPU inside that same run. Either peak is the
-        warming-up's rather than the picture's.
+        warming-up's rather than the picture's. What it compiled is reported all
+        the same: a model streamed from end to end holds no seat, and a report
+        tied to the measure would be one it could never give.
 
         Read before the coming residency is settled, so the figure sizing it is
         the one the generation before left, not one a generation stale.
         """
         watched, self.watched_run = self.watched_run, None
+        warmed_up, self.warmed_up_run = self.warmed_up_run, False
+
+        if warmed_up:
+            self.log_compiled_kernels()
+            return
 
         if watched is None:
             return
 
         device = get_execution_device()
         device_module = getattr(torch, device.type, torch.cuda)
-        watched_megapixels, resident, warmed_up = watched
+        watched_megapixels, resident = watched
         cost = device_module.max_memory_reserved(device.index) - resident
 
-        if warmed_up:
-            self.log_compiled_kernels()
-        elif cost > 0 and watched_megapixels > 0:
+        if cost > 0 and watched_megapixels > 0:
             measured = cost / watched_megapixels
             in_force = self.bytes_per_megapixel()
 
@@ -572,9 +580,11 @@ class ImagePipeline:
             else (
                 megapixels,
                 sum(hook.model.get_memory_footprint() for hook in self.offload_hooks),
-                self.warms_up_next_run,
             )
         )
+
+        # Apart from the watch above, so a streamed run still reports its kernels.
+        self.warmed_up_run = self.warms_up_next_run
 
         if self.warms_up_next_run:
             self.kernel_cache_counts = count_cached_kernels()
@@ -1026,7 +1036,8 @@ class ImagePipeline:
             self.offload_to_cpu(self.total_memory, stream_denoiser=streams_denoiser)
 
             # Shuttling the weights raised a peak no generation held, so the run
-            # being watched is dropped rather than measured wrong.
+            # being watched is dropped rather than measured wrong. The kernels
+            # compiled before it still stand.
             self.watched_run = None
 
             # The new weights want a warming-up run. The seat found for the
