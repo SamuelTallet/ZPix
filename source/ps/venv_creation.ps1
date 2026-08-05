@@ -7,7 +7,7 @@ function New-VirtualEnv {
         [string]$Uv # Path to uv executable
     )
 
-    & $Uv venv --python $Python --clear
+    & $Uv venv --python $Python --clear --force
 
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to create venv"
