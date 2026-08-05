@@ -386,7 +386,7 @@ if __name__ == "__main__":
                         lambda: gr.update(interactive=False),
                         outputs=model_select,
                     ).then(
-                        lambda: unload_lora(image_pipe.instance),
+                        lambda: unload_lora(image_pipe),
                     ).then(
                         lambda: gr.update(interactive=not BlockingTask.is_running),
                         outputs=model_select,
@@ -471,7 +471,7 @@ if __name__ == "__main__":
                 # - make LoRA row invisible,
                 # - forget path and name of loaded LoRA.
                 lora_swapped.failure(
-                    lambda: unload_lora(image_pipe.instance),
+                    lambda: unload_lora(image_pipe),
                 ).then(
                     remove_trigger_word,
                     inputs=[trigger_words, mm_prompt],
@@ -570,7 +570,7 @@ if __name__ == "__main__":
                         outputs=model_select,
                         show_progress="hidden",
                     )
-                    .then(lambda: unload_lora(image_pipe.instance))
+                    .then(lambda: unload_lora(image_pipe))
                     .then(
                         remove_trigger_word,
                         inputs=[trigger_words, mm_prompt],

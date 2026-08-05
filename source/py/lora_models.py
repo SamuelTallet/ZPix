@@ -149,19 +149,24 @@ def set_lora_strength(
     pipe.set_adapters("lora_1", strength)
 
 
-def unload_lora(pipe: DiffusionPipeline | ModularPipeline | None):
+def unload_lora(image_pipe: ImagePipeline):
     """Unload all LoRA weights from the pipeline.
 
     Args:
-        pipe: Pipeline to remove the LoRA weights from.
+        image_pipe: Loaded image model pipeline.
 
     Raises:
         gr.Error: If the pipeline doesn't support LoRA.
     """
+    pipe = image_pipe.instance
+
     if not isinstance(pipe, LoraBaseMixin):
         raise gr.Error("Pipeline doesn't support LoRA.")
 
-    pipe.unload_lora_weights()
+    # Dropping the layers and re-placing what remains raises a peak no picture
+    # held: left watched, it would pass for a run's cost and hold for the session.
+    with image_pipe.unhooked():
+        pipe.unload_lora_weights()
 
 
 def extract_lora_name(lora_path: Path) -> str:
