@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from shutil import move
+from sys import platform
 
 from platformdirs import user_cache_path, user_config_path
 
@@ -40,3 +41,12 @@ def get_user_cache_dir() -> Path:
     This includes Python bytecode, virtual env, uv, etc.
     """
     return user_cache_path("ZPix", appauthor=False)
+
+
+def get_triton_user_cache_dir() -> Path:
+    """Get directory where ZPix stores Triton cache for current user."""
+    # On Windows, it is shortened to avoid too long path errors.
+    if platform == "win32":
+        return Path.home() / ".triton"
+
+    return get_user_cache_dir() / "Triton"

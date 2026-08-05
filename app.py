@@ -44,6 +44,8 @@ from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
 from source.py.used_prompt import sync_used_prompt
 from source.py.user_data_dir import (
+    get_triton_user_cache_dir,
+    get_user_cache_dir,
     get_user_preferences_dir,
     migrate_user_preferences,
 )
@@ -68,10 +70,9 @@ if __name__ == "__main__":
 
     # Set paths.
 
-    # Path to Triton cache directory
-    # shortened by good measure to avoid too long path errors on Windows
-    # even if this has been fixed recently.
-    environ["TRITON_CACHE_DIR"] = str(Path.home() / ".triton")
+    # Triton and PyTorch Inductor caches directories.
+    environ["TRITON_CACHE_DIR"] = str(get_triton_user_cache_dir())
+    environ["TORCHINDUCTOR_CACHE_DIR"] = str(get_user_cache_dir() / "Inductor")
 
     app_dir = Path(__file__).parent
     """App directory."""

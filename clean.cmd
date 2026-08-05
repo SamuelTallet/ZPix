@@ -16,6 +16,11 @@ if /i "%DELETE_TRITON_CACHE%"=="y" (
     rmdir /s /q "%USERPROFILE%\.triton" >nul 2>&1
 )
 
+set /p DELETE_INDUCTOR_CACHE="Do you want to wipe Inductor cache? (y/N) "
+if /i "%DELETE_INDUCTOR_CACHE%"=="y" (
+    rmdir /s /q "%LOCALAPPDATA%\ZPix\Cache\Inductor" >nul 2>&1
+)
+
 set /p DELETE_PROMPTS_DB="Do you want to drop prompts history DB? (y/N) "
 if /i "%DELETE_PROMPTS_DB%"=="y" (
     del /q "%USERPROFILE%\.zpix\prompts_history.sqlite" >nul 2>&1
