@@ -20,6 +20,9 @@ only that distance says whether the trip is worth taking: ranking on footprint
 alone, as the parent strategy does, sends the denoiser back to seat an encoder.
 """
 
+ENCODER_RANK = 0
+"""Rank of the components a run calls once, before the loop starts."""
+
 UNKNOWN_RANK = 2
 """Rank of the unmatched components: after the known far-off ones."""
 

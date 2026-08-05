@@ -25,6 +25,7 @@ from source.py.image_model import ImageModel
 from source.py.krea2_flash import install_krea2_flash_attn
 from source.py.offload_strat import (
     DENOISER_RANK,
+    ENCODER_RANK,
     ReuseDistanceOffloadStrategy,
     eviction_rank,
 )
@@ -768,7 +769,9 @@ class ImagePipeline:
 
         The denoiser is never streamed here; it only is when it can't fit the
         card at all, or when the resolution leaves it no seat, both settled
-        before this runs.
+        before this runs. Where it was, the encoders follow it off the card
+        whether they would have fit or not: their room is room its flow never
+        gets, and being streamed it never asks the strategy for any.
 
         The card is measured with our own weights added back, never as it stands.
         This also runs after a LoRA load, and read raw there the free memory
@@ -795,13 +798,25 @@ class ImagePipeline:
         if not free_memory:
             return candidates
 
+        # A denoiser absent from the candidates is already on the bus, put there by
+        # this GPU's size or by the resolution.
+        denoiser_streams = not any(
+            eviction_rank(candidate[0]) >= DENOISER_RANK for candidate in candidates
+        )
+
         # Least called first, largest of those: most room bought per crossing.
         for name, component, footprint in sorted(
             candidates, key=lambda c: (eviction_rank(c[0]), -c[2])
         ):
             resident = sum(size for _, _, size in candidates)
 
-            if resident + memory_reserve <= free_memory:
+            # A streamed denoiser asks the strategy for nothing: its submodules
+            # arrive by a hook of their own, where the eviction it would have set
+            # off never fires. So the room an encoder holds is room its flow never
+            # gets, and the encoders leave whether they would have fit or not.
+            if resident + memory_reserve <= free_memory and not (
+                denoiser_streams and eviction_rank(name) == ENCODER_RANK
+            ):
                 break
 
             if eviction_rank(name) >= DENOISER_RANK:
