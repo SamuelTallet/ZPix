@@ -1016,8 +1016,8 @@ class ImagePipeline:
         Loading a LoRA, Diffusers removes them itself, then restores them with
         `enable_sequential_cpu_offload()`, which a modular pipeline lacks: it
         raises, leaving every component unhooked on CPU. Only the Accelerate
-        hooks are visible to it, hence a crash reserved to the components too
-        large for the GPU.
+        hooks are visible to it, hence a crash reserved to a pipeline with a
+        component streamed, whatever put it on CPU.
         """
         if (
             self.instance is None
