@@ -99,6 +99,24 @@ def get_aspects_and_resolutions() -> tuple:
     )
 
 
+def smallest_picture_pixels() -> int:
+    """Pixels of the smallest picture this application can be asked for.
+
+    What sizes a decision taken before any resolution is in hand, at load. The
+    smallest, because that decision is provisional: the fit before each generation
+    settles it again on the picture actually asked for, so erring low costs one
+    arrival on the GPU, where erring high leaves every component on the bus, and
+    the largest picture offered can want more than the whole of a small GPU.
+    """
+    resolutions_by_aspect = get_aspects_and_resolutions()[0]
+
+    return min(
+        width * height
+        for resolutions in resolutions_by_aspect.values()
+        for width, height in map(parse_resolution, resolutions)
+    )
+
+
 def parse_resolution(resolution: str) -> tuple[int, int]:
     """Parse resolution string into width and height.
 

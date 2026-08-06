@@ -78,7 +78,32 @@ def generate(
     width, height = parse_resolution(resolution)
     used_seed = randint(1, 1000000) if random_seed else int(seed)
 
-    image_pipe.fit_to_resolution(width, height)
+    ref_images = []
+
+    if (
+        reference_images
+        and reference_images.get("files")
+        and "image-to-image" in model.features
+    ):
+        ref_images = [normalize_ref_image(file) for file in reference_images["files"]]
+
+    # Strength-based pipelines (e.g. Anima, Z-Image) condition on a single
+    # reference image via the batch dimension.
+    uses_strength = image_pipe.supports_strength()
+
+    if uses_strength and len(ref_images) >= 2:
+        logger.warning("This pipeline doesn't support multiple ref images.")
+        ref_images = ref_images[:1]
+
+    # A reference costs the run only where the denoiser reads it: the pipelines
+    # above pour it into the latents it starts from and denoise the picture
+    # alone, while the others append it to the stream at whatever size it came
+    # in at, so the loop then holds it at every step on top of the picture.
+    reference_pixels = (
+        0 if uses_strength else sum(image.width * image.height for image in ref_images)
+    )
+
+    image_pipe.fit_to_resolution(width, height, reference_pixels)
 
     pipe_kwargs = {
         "prompt": prompt,
@@ -98,23 +123,12 @@ def generate(
         # Standard pipelines take CFG as a call argument.
         pipe_kwargs["guidance_scale"] = float(cfg)
 
-    if (
-        reference_images
-        and reference_images.get("files")
-        and "image-to-image" in model.features
-    ):
-        ref_images_files = reference_images["files"]
-
-        if image_pipe.supports_strength():
-            # Strength-based pipelines (e.g. Anima, Z-Image) condition on a
-            # single reference image via the batch dimension.
-            if len(ref_images_files) >= 2:
-                logger.warning("This pipeline doesn't support multiple ref images.")
-
-            pipe_kwargs["image"] = normalize_ref_image(ref_images_files[0])
+    if ref_images:
+        if uses_strength:
+            pipe_kwargs["image"] = ref_images[0]
             pipe_kwargs["strength"] = 1 - ref_image_strength
         else:
-            pipe_kwargs["image"] = [normalize_ref_image(f) for f in ref_images_files]
+            pipe_kwargs["image"] = ref_images
 
     with BlockingTask.run(t("Please try again shortly, an image is being generated.")):
         try:
