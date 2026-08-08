@@ -9,9 +9,14 @@ from pathlib import Path
 
 import gradio as gr
 import torch
-from accelerate import cpu_offload
 from accelerate.hooks import remove_hook_from_module
 from accelerate.utils.memory import clear_device_cache
+from diffusers.hooks.group_offloading import (
+    _GROUP_OFFLOADING,
+    _LAYER_EXECUTION_TRACKER,
+    _LAZY_PREFETCH_GROUP_OFFLOADING,
+    apply_group_offloading,
+)
 from diffusers.modular_pipelines.components_manager import custom_offload_with_hook
 from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
@@ -663,7 +668,7 @@ class ImagePipeline:
         # one.
         #
         # Settled before the residency, which is arbitrated against it.
-        streams = self.denoiser_streams(stream_pixels)
+        streams = self.denoiser_streams()
         self.memory_reserve = max(
             self.run_margin, self.decode_bytes_as_run(pixels, streams)
         )
@@ -728,7 +733,7 @@ class ImagePipeline:
         run = self.run_margin * (WARMING_UP_RUN if self.warms_up_next_run else 1)
         needed = weights + run
         available = self.free_memory_without_ours()
-        streams = self.denoiser_streams(pixels)
+        streams = self.denoiser_streams()
 
         # The seat is not the only thing a resolution settles: who sits beside the
         # denoiser was arbitrated against the reserve of the picture before, and a
@@ -749,15 +754,16 @@ class ImagePipeline:
         self.remove_hooks()
         self.offload_to_cpu(self.total_memory, stream_denoiser=streams)
 
-    def denoiser_streams(self, pixels: int) -> bool:
+    def denoiser_streams(self) -> bool:
         """Will the denoiser cross the bus rather than sit on the GPU?
 
         Asked before the reserve is sized as well as when the residency is
         settled, the two having to agree: what a decode may keep for itself
         depends on whether the loop before it is paying for every byte.
 
-        Args:
-            pixels: Pixels the denoiser reads at every step.
+        Takes no resolution: the picture reaches this through `run_margin`, which
+        the caller sizes on it beforehand. Passing it as well invites the two to
+        disagree.
         """
         weights = self.denoiser_footprint()
 
@@ -895,16 +901,33 @@ class ImagePipeline:
         def stream(
             name: str, component: torch.nn.Module, reason: str, chosen: bool = True
         ) -> None:
-            """Leave a component on CPU, feeding the GPU one submodule at a time.
+            """Leave a component on CPU, feeding the GPU one leaf at a time.
 
             Being picked for it is an optimisation; being forced into it by a
             component the GPU can't hold is a limit worth warning about.
 
             A seat given up settles every component again, nearly all of them the
             same way as before, so only a reason that changed earns a line.
+
+            Diffusers' offload rather than Accelerate's `cpu_offload`, for the
+            stream it fetches on: the next leaf crosses the bus while the current
+            one computes, where `cpu_offload` waits for each. Measured on a Krea 2
+            block, 13ms of bus a step against 321ms. `leaf_level` and no other:
+            `block_level` on that stream measured slower than `cpu_offload`.
+
+            Host memory is left pageable. Pinning buys a tenth of an already small
+            figure and can't be paged back out, which a machine holding a large
+            model in little memory pays for everywhere else.
             """
-            cpu_offload(
-                component, device, offload_buffers=len(component._parameters) > 0
+            apply_group_offloading(
+                component,
+                onload_device=device,
+                offload_device=torch.device("cpu"),
+                offload_type="leaf_level",
+                use_stream=True,
+                record_stream=True,
+                non_blocking=True,
+                low_cpu_mem_usage=True,
             )
             streamed[name] = reason
 
@@ -1023,7 +1046,7 @@ class ImagePipeline:
 
         # A denoiser absent from the candidates is already on the bus, put there by
         # this GPU's size or by the resolution.
-        denoiser_streams = not any(
+        denoiser_on_bus = not any(
             eviction_rank(candidate[0]) >= DENOISER_RANK for candidate in candidates
         )
 
@@ -1037,7 +1060,7 @@ class ImagePipeline:
             # A streamed denoiser asks the strategy for nothing, its submodules
             # arriving by a hook of their own: the room an encoder holds is room
             # its flow never gets, so the encoders leave whether they fit or not.
-            if fits and not (denoiser_streams and eviction_rank(name) == ENCODER_RANK):
+            if fits and not (denoiser_on_bus and eviction_rank(name) == ENCODER_RANK):
                 break
 
             if eviction_rank(name) >= DENOISER_RANK:
@@ -1122,6 +1145,21 @@ class ImagePipeline:
         for component in self.instance.components.values():
             if isinstance(component, torch.nn.Module):
                 remove_hook_from_module(component, recurse=True)
+
+                # Diffusers keeps its own registry, out of Accelerate's reach.
+                # All three names, not the offload alone: the two beside it are
+                # dropped on the first forward, so a component streamed twice
+                # before generating anything still carries them, and registering
+                # them again raises.
+                registry = getattr(component, "_diffusers_hook", None)
+
+                for name in (
+                    _GROUP_OFFLOADING,
+                    _LAZY_PREFETCH_GROUP_OFFLOADING,
+                    _LAYER_EXECUTION_TRACKER,
+                ):
+                    if registry is not None:
+                        registry.remove_hook(name, recurse=True)
 
         # Each hook names its component and, through the eviction ring, every
         # other, so this list holds the set before until it is cleared. Cleared
