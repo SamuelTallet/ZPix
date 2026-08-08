@@ -13,6 +13,7 @@ $include = @(
     "tools\astral\LICENSE.txt",
     "tools\astral\uv.exe",
     "translations",
+    "wheels",
     "app.py",
     "clean.cmd",
     "LICENSE",
