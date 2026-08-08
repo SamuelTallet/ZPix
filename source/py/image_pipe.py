@@ -32,7 +32,7 @@ from source.py.krea2_flash import install_krea2_flash_attn
 from source.py.offload_strat import (
     DENOISER_RANK,
     ENCODER_RANK,
-    ReuseDistanceOffloadStrategy,
+    DenoiserFirstOffloadStrategy,
     eviction_rank,
 )
 from source.py.resolutions import smallest_picture_pixels
@@ -75,6 +75,28 @@ driver and on what else the machine is running, none of which the architecture
 of a model says anything about: it answers for what the reading can't see rather
 than for a shortcoming of it. Above about twelve gigabytes of card it costs
 nothing, every model here sitting whole with room to spare.
+"""
+
+ADAPTED_RUN = 3
+"""What a run with an adapter is weighed as asking against one without, per run.
+
+An adapter wraps a layer rather than replacing it: the input stays alive for two
+paths, and two outputs are added where one was written. That is a cost per
+activation, following the resolution and the layers wrapped rather than the
+adapter's own weight, so a small adapter over the same layers asks nearly what a
+large one does. Weighed on the footprint instead, this changed no decision.
+
+It stands for more than the adapter, though, and the figure says so: a 75MB one
+was watched to take a 1080p denoiser seated with two gigabytes to spare into
+paging, from 4.5 to 27.9 seconds a step from the third generation on and for the
+rest of the session. The same denoiser without it held five generations. What
+the reserve doesn't cover, at that resolution, is thin enough that an adapter
+crosses it, so this is charged where the crossing happens rather than to every
+picture: read as the adapter's own cost it would be several times too large.
+
+Conservative on purpose, the two errors costing nothing alike: refusing a seat
+that would have held costs half a second a step, granting one that doesn't has
+the driver page the card at twenty-three.
 """
 
 WARMING_UP_RUN = 3
@@ -193,6 +215,15 @@ class ImagePipeline:
         self.memory_reserve = 0
         """GPU memory the offload strategy keeps free, in bytes; 0 without one."""
 
+        self.residency_reserve = 0
+        """GPU memory the resident set has to leave free, in bytes; 0 without one.
+
+        The widest phase of a generation, where `memory_reserve` is the loop's
+        alone. It says who may sit beside the denoiser, never whether the
+        denoiser sits: a decode too wide to share the card sends the encoders
+        onto the bus, the seat not being theirs to take.
+        """
+
         self.settled = 0
         """The reserve the resident set was last arbitrated against, in bytes."""
 
@@ -248,7 +279,7 @@ class ImagePipeline:
         """GPU memory a VAE pass needs beyond its weights, in bytes; 0 until a
         resolution is known."""
 
-        self.offload_strategy: ReuseDistanceOffloadStrategy | None = None
+        self.offload_strategy: DenoiserFirstOffloadStrategy | None = None
         """Strategy evicting the components, `None` when none is in play."""
 
         self.offload_hooks: list = []
@@ -334,6 +365,7 @@ class ImagePipeline:
         # will share this.
         memory_info = get_memory_info()
         self.memory_reserve = 0
+        self.residency_reserve = 0
         self.memory_budget = None
         self.free_memory, self.total_memory = memory_info or (0, 0)
         self.streams_weights = False
@@ -354,15 +386,11 @@ class ImagePipeline:
         # residency it settles is provisional, the fit before each generation
         # taking it again on the picture actually asked for.
         #
-        # Nor is a budget, which is what says whether a decode goes through
-        # whole: unable to promise one, this doesn't reserve for one. Erring low
-        # is the side to err on here, as above, and reserving for a whole pass
-        # was watched to declare a denoiser too large for a card it fits.
-        smallest = smallest_picture_pixels()
-        self.memory_reserve = max(
-            self.run_bytes(smallest),
-            self.decode_bytes_as_run(smallest, self.streams_denoiser),
-        )
+        # The run's margin and nothing else, here as before every generation: the
+        # reserve answers to the loop. Reserving for a whole pass was watched to
+        # declare a denoiser too large for a card it fits.
+        self.memory_reserve = self.run_bytes(smallest_picture_pixels())
+        self.residency_reserve = self.memory_reserve
 
         # On NVIDIA, AMD & Intel ARC GPUs:
         if memory_info and (torch.cuda.is_available() or torch.xpu.is_available()):
@@ -383,11 +411,11 @@ class ImagePipeline:
     def measure_memory_budget(self, memory_info: tuple[int, int] | None) -> int | None:
         """Measure the GPU memory a single VAE pass can count on, in bytes.
 
-        Only the weights that can't leave the GPU are deducted. Under the offload
-        strategy that's the VAE itself, every sibling being evictable, so the
-        decode gets nearly the whole GPU rather than the leftovers of whatever
-        ran before it. It starts from the free memory, never the total: the
-        desktop takes its cut first, and a share of the GPU would ignore it.
+        Only the weights that can't leave the GPU are deducted, which under the
+        offload strategy is the VAE itself: by the time a pass runs, the encoders
+        are done and the denoiser has taken its last step, so every sibling is
+        evictable. It starts from the free memory, never the total: the desktop
+        takes its cut first, and a share of the GPU would ignore it.
 
         Args:
             memory_info: GPU memory free and total, in bytes, read with the
@@ -507,6 +535,25 @@ class ImagePipeline:
 
         return getattr(self.instance, "transformer", None) or getattr(
             self.instance, "unet", None
+        )
+
+    def adapter_footprint(self) -> int:
+        """Weight of the adapters given to the denoiser, in bytes, 0 without any.
+
+        Read off the tensor names rather than asked of the pipeline, which
+        answers for adapters it loaded and not for those merged into the weights.
+        """
+        denoiser = self.denoiser()
+
+        if denoiser is None:
+            return 0
+
+        tensors = chain(denoiser.named_parameters(), denoiser.named_buffers())
+
+        return sum(
+            tensor.numel() * tensor.element_size()
+            for name, tensor in tensors
+            if "lora" in name.lower()
         )
 
     def denoiser_footprint(self) -> int:
@@ -655,32 +702,26 @@ class ImagePipeline:
         # is weighed against.
         self.run_margin = self.run_bytes(stream_pixels)
 
-        # What every arrival on the GPU leaves free behind it: the widest pass
-        # this picture asks for, since whichever it is has to fit next to what
-        # stayed. Sized per resolution, a reserve fixed at load standing either
-        # above what a small picture holds or under what a large one does.
-        #
-        # A decode about to be tiled is not that pass. What it would hold whole
-        # is the reason it is tiled and no longer what it costs: read on it, the
-        # reserve stood at most of the card, every component was declared too
-        # large to sit beside it, and a denoiser of under two gigabytes crossed
-        # the bus at every step to leave room for a pass measured at a third of
-        # one.
-        #
-        # Settled before the residency, which is arbitrated against it.
-        streams = self.denoiser_streams()
-        self.memory_reserve = max(
-            self.run_margin, self.decode_bytes_as_run(pixels, streams)
-        )
+        # What every arrival leaves free behind it: the loop's margin alone. Read
+        # on the decode's instead, the shortest phase set the room every other
+        # one has to leave, and the strategy emptied the GPU on each arrival.
+        self.memory_reserve = self.run_margin
+
+        # Who may sit beside the denoiser is another question, and the widest
+        # phase answers it: an encoder resident through a decode that wants the
+        # rest of the card leaves the pass nowhere to go, and was watched to be
+        # evicted for the denoiser and back, twice a generation. Called once, it
+        # pays the bus; neither figure here can take the denoiser's seat.
+        self.residency_reserve = max(self.run_margin, self.decode_bytes(pixels))
 
         # A reserve larger than the GPU is not an instruction anything can carry
-        # out: the strategy empties the GPU on each arrival for a figure it never
-        # reaches. The seat is weighed on the margin above, never on this, so
-        # holding it back can hand no one a seat.
+        # out: it asks for a figure no eviction ever reaches. The seat is weighed
+        # on the run's margin, never on these, so capping them frees no one.
         offered = self.free_memory_without_ours()
 
         if offered:
             self.memory_reserve = min(self.memory_reserve, offered)
+            self.residency_reserve = min(self.residency_reserve, offered)
 
         self.stream_denoiser_if_needed(stream_pixels)
         self.tile_vae_if_needed(pixels)
@@ -691,6 +732,9 @@ class ImagePipeline:
 
     def stream_denoiser_if_needed(self, pixels: int) -> None:
         """Take the denoiser off the GPU when the picture leaves it no seat.
+
+        Where the seat is granted or refused. Every other arbitration here runs
+        on what this leaves. `DENOISER_RANK` says why it gets to go first.
 
         A run calls the denoiser at every step, so it earns its place while there
         is one: streamed, its weights pay a trip over the bus each time, and every
@@ -728,24 +772,22 @@ class ImagePipeline:
         if not weights:
             return
 
-        # The whole of the run's margin, its caller having settled the figure,
-        # and several times over while the coming generation still compiles.
-        run = self.run_margin * (WARMING_UP_RUN if self.warms_up_next_run else 1)
-        needed = weights + run
+        needed = weights + self.projected_run()
         available = self.free_memory_without_ours()
         streams = self.denoiser_streams()
 
         # The seat is not the only thing a resolution settles: who sits beside the
         # denoiser was arbitrated against the reserve of the picture before, and a
         # set that fitted a small one overflows on a larger.
-        if streams == self.streams_denoiser and self.memory_reserve == self.settled:
+        if streams == self.streams_denoiser and self.residency_reserve == self.settled:
             return
 
         if streams != self.streams_denoiser:
             logger.info(
                 f"{pixels / PIXELS_PER_MEGAPIXEL:.1f}MP needs "
                 f"{needed / 1024**3:.1f}GB, "
-                f"{'compiling ' if self.warms_up_next_run else ''}run included, "
+                f"{'compiling ' if self.warms_up_next_run else ''}"
+                f"{'adapted ' if self.adapter_footprint() else ''}run included, "
                 f"GPU offers {available / 1024**3:.1f}GB "
                 f"less {RESERVED_MEMORY / 1024**3:.1f}GB "
                 f"reserved, so we {'stream' if streams else 'seat'} the denoiser."
@@ -757,9 +799,10 @@ class ImagePipeline:
     def denoiser_streams(self) -> bool:
         """Will the denoiser cross the bus rather than sit on the GPU?
 
-        Asked before the reserve is sized as well as when the residency is
-        settled, the two having to agree: what a decode may keep for itself
-        depends on whether the loop before it is paying for every byte.
+        The one question that frees the seat while the loop still wants it, and
+        it is asked once, before the loop starts: too short here and the denoiser
+        streams for the whole resolution. Only the decode takes the seat back,
+        and only once the last step is over.
 
         Takes no resolution: the picture reaches this through `run_margin`, which
         the caller sizes on it beforehand. Passing it as well invites the two to
@@ -770,50 +813,48 @@ class ImagePipeline:
         if not weights:
             return self.streams_denoiser
 
-        run = self.run_margin * (WARMING_UP_RUN if self.warms_up_next_run else 1)
-
-        return weights + run > self.free_memory_without_ours() - RESERVED_MEMORY
-
-    def tiles_decode(self, pixels: int, streams: bool) -> bool:
-        """Will this picture be decoded in tiles rather than whole?
-
-        Asked in two places, and by one test on purpose: the reserve every
-        arrival leaves behind and the decode it is left for have to agree on
-        which pass is coming, and a reserve sized on a pass that never runs is
-        what sends a denoiser the GPU had room for onto the bus.
-
-        A whole pass is worth its room while the denoiser has a seat, and stops
-        being worth it the moment the denoiser loses one. What the pass would
-        hold is then held free across every step of the loop, for something that
-        happens once at the end of it, and every byte of it is a byte the weights
-        crossing the bus don't get. Measured on the family that showed it, a
-        decode kept whole cost the loop more than three times what tiling it
-        costs the decode.
-
-        Args:
-            pixels: Pixels of the picture to generate.
-            streams: Is the denoiser crossing the bus at every step?
-        """
-        # An unmeasurable GPU gets the safe path rather than an optimistic one.
         return (
-            streams
-            or self.memory_budget is None
-            or self.decode_bytes(pixels) > self.memory_budget
+            weights + self.projected_run()
+            > self.free_memory_without_ours() - RESERVED_MEMORY
         )
 
-    def decode_bytes_as_run(self, pixels: int, streams: bool) -> int:
-        """What the decode of this picture asks as it will really be run, in bytes.
+    def projected_run(self) -> int:
+        """What the coming run is weighed as asking beyond the weights, in bytes.
 
-        Whole, that is what it holds. Tiled, it is bounded by the tile and no
-        longer by the picture: what a whole pass would have held is the reason
-        it is tiled and says nothing about what it costs, so nothing here is
-        sized on it and the run is left to answer.
+        The margin its resolution settled, several times over while the graphs
+        are still to compile, and doubled again where an adapter wraps the
+        layers. `WARMING_UP_RUN` and `ADAPTED_RUN` say what each is measured on.
+
+        Charged to the seat alone: the reserve every arrival leaves behind
+        answers another question, and one nothing can reach empties the GPU on
+        each of them.
+        """
+        run = self.run_margin * (WARMING_UP_RUN if self.warms_up_next_run else 1)
+
+        return run * ADAPTED_RUN if self.adapter_footprint() else run
+
+    def tiles_decode(self, pixels: int) -> bool:
+        """Will this picture be decoded in tiles rather than whole?
+
+        Against the budget alone, every weight the pass finds in its way being
+        evictable by then: the encoders are done conditioning and the denoiser
+        has run its last step, so what they hold is room the pass can have for
+        the price of a trip. A pass too wide for the whole card is another
+        matter, and tiling bounds it by the tile at the price of faint seams.
+
+        This used to answer `True` for every streamed denoiser whatever the
+        budget said, tiling a 0.9MP pass beside a budget of 1.7MP. Streaming and
+        tiling are not one question, and joining them let each rearrange the
+        other's answer.
 
         Args:
             pixels: Pixels of the picture to generate.
-            streams: Is the denoiser crossing the bus at every step?
         """
-        return 0 if self.tiles_decode(pixels, streams) else self.decode_bytes(pixels)
+        # An unmeasurable GPU gets the safe path rather than an optimistic one.
+        if self.memory_budget is None:
+            return True
+
+        return self.decode_bytes(pixels) > self.memory_budget
 
     def tile_vae_if_needed(self, pixels: int) -> None:
         """Tile the VAE work only for the pictures this GPU can't handle in one pass.
@@ -837,14 +878,12 @@ class ImagePipeline:
         if vae is None:
             return
 
-        needs_tiling = self.tiles_decode(pixels, self.streams_denoiser)
+        needs_tiling = self.tiles_decode(pixels)
 
         # What the pass itself needs, the reserve standing in where it can't be
-        # sized: tiling bounds a pass unmeasurably, and a streamed denoiser
-        # leaves its siblings little to fit around.
-        streams = self.streams_denoiser or needs_tiling
+        # sized: tiling bounds a pass unmeasurably.
         self.decode_margin = (
-            self.memory_reserve if streams else self.decode_bytes(pixels)
+            self.memory_reserve if needs_tiling else self.decode_bytes(pixels)
         )
 
         # The run's own margin is not asked for here: sized on it, the strategy
@@ -888,10 +927,15 @@ class ImagePipeline:
         # of its components manager, which hooks every component, including those
         # too large to stay on the GPU.
         device = get_execution_device()
-        memory_reserve = self.memory_reserve
-        self.settled = memory_reserve
 
-        offload_strategy = ReuseDistanceOffloadStrategy(
+        # Two figures, two questions: what each arrival leaves behind is the
+        # loop's margin, who may sit at all is the widest phase. A set that fits
+        # the loop and not the decode evicts itself all session.
+        memory_reserve = self.memory_reserve
+        residency_reserve = self.residency_reserve
+        self.settled = residency_reserve
+
+        offload_strategy = DenoiserFirstOffloadStrategy(
             memory_reserve_margin=memory_reserve
         )
         self.offload_strategy = offload_strategy
@@ -959,7 +1003,7 @@ class ImagePipeline:
                 candidates.append((name, component, footprint()))
 
         candidates = self.stream_least_called_until_resident(
-            candidates, memory_reserve, stream
+            candidates, residency_reserve, stream
         )
 
         # Set once the pass is over, so a component streamed twice within it is
@@ -1023,7 +1067,8 @@ class ImagePipeline:
 
         Args:
             candidates: Name, component and footprint of what could stay on GPU.
-            memory_reserve: GPU memory to leave free for the run, in bytes.
+            memory_reserve: GPU memory the resident set has to leave free, in
+                bytes: the widest phase of a generation, not the loop's alone.
             stream: Callback leaving a component on CPU.
 
         Returns:
@@ -1089,6 +1134,11 @@ class ImagePipeline:
         would cost every weight its return trip next generation, reallocated
         host-side each way by `module.to()`: that churn is what makes a session
         slower as it goes.
+
+        The denoiser is among them, and this is the one place it ever is: the
+        last step is over by the time this runs, so its seat is worth the trip
+        back and no more. Kept seated through a 1080p decode, the pass had to be
+        tiled instead and the generation went from 4.2 to 23.3 seconds a step.
         """
         vae = getattr(self.instance, "vae", None)
 
@@ -1186,15 +1236,15 @@ class ImagePipeline:
             yield
             return
 
-        streams_denoiser = self.streams_denoiser
         self.remove_hooks()
 
         try:
             yield
         finally:
-            # The new weights come in unhooked: re-offload covers them too, and
-            # the denoiser keeps the seat, or the CPU, the resolution gave it.
-            self.offload_to_cpu(self.total_memory, stream_denoiser=streams_denoiser)
+            # The edit outlives every compiled graph, so the coming run warms up
+            # again at every size. Settled first: the projection below weighs it.
+            self.warmed_up_streams.clear()
+            self.warms_up_next_run = True
 
             # Read again under the footprint the edit moved. The architecture is
             # the one it was, adapters changing no shape the walk reads, but that
@@ -1202,11 +1252,14 @@ class ImagePipeline:
             # handed, so neither is found under the weights that came out of this.
             self.read_run_memory()
 
-            # The new weights want a warming-up run at every size, the graphs
-            # compiled for the ones before not surviving the edit. The denoiser's
-            # seat needs no undoing, filed under a footprint they move.
-            self.warmed_up_streams.clear()
-            self.warms_up_next_run = True
+            # The new weights come in unhooked, and heavier. Projected again
+            # rather than handed back the seat the weights before them earned: an
+            # adapter landing on a seated denoiser was watched to take the card
+            # past what it holds, where the driver pages instead of failing and a
+            # step went from 4.5 to 27.9 seconds for the rest of the session.
+            self.offload_to_cpu(
+                self.total_memory, stream_denoiser=self.denoiser_streams()
+            )
 
     def swap(self, model: ImageModel, t: Callable[[str], str]) -> ImageModel:
         """Swap an image model pipeline, blocking other critical tasks.
