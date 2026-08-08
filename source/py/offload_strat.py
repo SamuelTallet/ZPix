@@ -87,17 +87,50 @@ class DenoiserFirstOffloadStrategy(AutoOffloadStrategy):
             f"{evictable / 1024**3:.1f}GB evictable."
         )
 
-        if needed <= free_memory:
-            return []
+        # A run conditions once, before the first step, so the encoders are done
+        # by the time the denoiser arrives and their next use is the generation
+        # after this one. The room they hold is the loop's for the asking, and no
+        # figure has to say so: this is the one eviction here that isn't weighed
+        # against anything, and it runs before the reserve is even consulted.
+        #
+        # Left to the arbitration below, that room is kept whenever the arrival
+        # fits without it, which is most of the time and never when it counts: a
+        # generation that compiles asks for several times a settled one, and what
+        # it overruns by is smaller than what a finished encoder holds. Sizing the
+        # reserve to catch that is what the note in `WARMING_UP_RUN` says not to
+        # try again.
+        released = (
+            [hook for hook in hooks if eviction_rank(hook.model_id) == ENCODER_RANK]
+            if eviction_rank(model_id) >= DENOISER_RANK
+            else []
+        )
 
-        evicted = []
+        if released:
+            freed = sum(hook.model.get_memory_footprint() for hook in released)
+
+            logger.info(
+                f"Releasing {', '.join(hook.model_id for hook in released)}: "
+                f"{freed / 1024**3:.1f}GB freed, never called in the loop."
+            )
+
+            free_memory += freed
+
+        if needed <= free_memory:
+            return released
+
+        # Counted apart from the released ones all the way down: those are gone
+        # for having finished, so they are neither weighed for the room nor handed
+        # back by the trim below, and the room they freed is already in hand.
+        for_room = []
 
         # The seat sticks to whoever is sitting: an arriving sibling may not take
         # the denoiser's place. Ranking alone only made it the last to go, which
         # is still gone, and an encoder called once was watched to unseat it on
         # its way in and be unseated on its way out, both trips paid each way.
         candidates = [
-            hook for hook in hooks if eviction_rank(hook.model_id) < DENOISER_RANK
+            hook
+            for hook in hooks
+            if hook not in released and eviction_rank(hook.model_id) < DENOISER_RANK
         ]
 
         # Unless nothing else can pay: short of the room once every sibling is
@@ -105,7 +138,7 @@ class DenoiserFirstOffloadStrategy(AutoOffloadStrategy):
         evictable_now = sum(hook.model.get_memory_footprint() for hook in candidates)
 
         if free_memory + evictable_now < needed:
-            candidates = hooks
+            candidates = [hook for hook in hooks if hook not in released]
 
         for hook in sorted(
             candidates,
@@ -118,21 +151,21 @@ class DenoiserFirstOffloadStrategy(AutoOffloadStrategy):
                 break
 
             free_memory += hook.model.get_memory_footprint()
-            evicted.append(hook)
+            for_room.append(hook)
 
         # Reaching a nearer-used tier can make the evictions that led there
         # pointless, and their return trip would buy nothing.
-        for hook in list(evicted):
+        for hook in list(for_room):
             footprint = hook.model.get_memory_footprint()
 
             if free_memory - footprint >= needed:
                 free_memory -= footprint
-                evicted.remove(hook)
+                for_room.remove(hook)
 
-        if evicted:
+        if for_room:
             logger.info(
-                f"Evicting {', '.join(hook.model_id for hook in evicted)} "
+                f"Evicting {', '.join(hook.model_id for hook in for_room)} "
                 f"for {model_id}."
             )
 
-        return evicted
+        return released + for_room

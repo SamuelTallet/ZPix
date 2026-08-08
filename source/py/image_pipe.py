@@ -114,6 +114,11 @@ them. Three times the run covers both.
 Charged to the seat alone, never to the eviction reserve: this says what a
 generation might reach, where the reserve is what every arrival has to leave
 behind, and one nothing can reach empties the GPU on each of them.
+
+Sizing the reserve on it was tried and doesn't hold: what a compiling run reaches
+isn't a multiple of a settled one at every resolution, so the multiple covering
+one leaves the arrival short at another. `ENCODER_RANK` frees that room without a
+figure at all.
 """
 
 PIXELS_PER_MEGAPIXEL = 1e6
@@ -712,7 +717,18 @@ class ImagePipeline:
         # rest of the card leaves the pass nowhere to go, and was watched to be
         # evicted for the denoiser and back, twice a generation. Called once, it
         # pays the bus; neither figure here can take the denoiser's seat.
-        self.residency_reserve = max(self.run_margin, self.decode_bytes(pixels))
+        #
+        # The whole pass is that phase only where the pass runs whole. A tiled one
+        # is bounded by its tile, and asked for the picture's figure it names a
+        # reserve as large as the card, which reads downstream as unreachable and
+        # leaves the residency untouched. Told apart here as `tile_vae_if_needed`
+        # tells `decode_margin` apart, and off the same `tiles_decode`, so the two
+        # can't disagree.
+        self.residency_reserve = (
+            self.run_margin
+            if self.tiles_decode(pixels)
+            else max(self.run_margin, self.decode_bytes(pixels))
+        )
 
         # A reserve larger than the GPU is not an instruction anything can carry
         # out: it asks for a figure no eviction ever reaches. The seat is weighed
