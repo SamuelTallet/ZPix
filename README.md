@@ -131,7 +131,7 @@ Icons:
 
 ## Thanks
 
-Thanks to M1000, JDD, Design8400, TGS and Nomis for beta testing this program.
+Thanks to M1000, Kellzea, JDD, Design8400, TGS and Nomis for beta testing this program.
 
 ## License
 
