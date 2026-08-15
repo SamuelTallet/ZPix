@@ -206,7 +206,7 @@ if __name__ == "__main__":
                 gr.HTML(
                     js_on_load=f"""
                         const btn = document.getElementById("access-faq-btn")
-                        btn.title = "{t("Access the FAQ of this application")}"
+                        btn.title = "{t("Access the ZPix FAQ")}"
                     """
                 )
                 access_faq_btn.click(
