@@ -16,6 +16,16 @@ document.addEventListener("mouseleave", (event) => {
     }
 }, true) // Required because mouseleave doesn't bubble.
 
+// A refresh can close the server (see app.unload)
+// or disturb the app state.
+if (performance.getEntriesByType("navigation")[0]?.type === "reload") {
+    const notice = document.createElement("div")
+    notice.className = "refresh-notice"
+    notice.textContent = "Page reload broke app."
+    notice.textContent += " Close this tab or window and run ZPix again."
+    document.body.replaceChildren(notice)
+}
+
 /**
  * Hide the prompt tooltip on its textarea mouseover
  * so tooltip doesn't cause inconvenience to the user.

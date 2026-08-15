@@ -39,6 +39,7 @@ from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
 from source.py.ref_images import show_ref_image_strength
 from source.py.resolutions import get_aspects_and_resolutions
+from source.py.server_close import close_server
 from source.py.translations import get_translate_func
 from source.py.trigger_word import remove_trigger_word, update_trigger_word
 from source.py.update_check import check_for_updates
@@ -941,6 +942,10 @@ if __name__ == "__main__":
         # Same for the reference image strength slider, which stays collapsed
         # until a reference image is added (see reference_images.change above).
         app.load(lambda: gr.update(visible=False), outputs=ref_image_strength_row)
+
+        # Not required on Windows where launcher kills server on WebView close.
+        if args.in_browser:
+            app.unload(lambda: close_server(app))
 
     app.launch(
         server_port=int(get_metadata("HTTP_PORT")),

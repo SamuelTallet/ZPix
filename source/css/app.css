@@ -180,3 +180,7 @@ footer a:hover {
 footer .divider {
     display: none;
 }
+
+.refresh-notice {
+    margin: 42vh auto;
+}
