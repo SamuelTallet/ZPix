@@ -63,9 +63,11 @@
 }
 
 #prompt textarea {
-    overflow-y: hidden !important;
-    height: auto !important;
-    field-sizing: content;
+    @supports (field-sizing: content) {
+        overflow-y: hidden !important;
+        height: auto !important;
+        field-sizing: content;
+    }
 }
 
 #reference-images textarea {
