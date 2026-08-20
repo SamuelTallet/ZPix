@@ -1,7 +1,7 @@
 # Below are the common dependencies for the ZPix Gradio app.
 # See start.ps1 and start.sh for platform and accelerator specific dependencies.
 
-wheels/diffusers-0.40.0.dev0-py3-none-any.whl # 9c6a68c
+diffusers==0.40.0
 peft==0.19.1
 sdnq==0.2.0
 platformdirs==4.11.0

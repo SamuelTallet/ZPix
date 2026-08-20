@@ -19,7 +19,6 @@ include=(
     source/py/*.py
     "source/app.js"
     "translations"
-    "wheels"
     ".uv-version"
     "app.py"
     "LICENSE"
