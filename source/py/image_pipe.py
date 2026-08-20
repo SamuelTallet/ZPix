@@ -340,8 +340,8 @@ class ImagePipeline:
                     self.instance.transformer.reset_attention_backend()
                     logger.warning(f"FlashAttention is not available: {e}")
 
-            # These two carry attention the backend refuses, Anima because its
-            # text conditioner masks it, Krea 2 because of its grouped queries.
+            # These two families mask their attention and the backend refuses any
+            # attn_mask, while the flash_attn package unpads around it.
             elif model.family == "Anima":
                 try:
                     install_anima_flash_attn(self.instance)
