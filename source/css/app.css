@@ -30,6 +30,15 @@
  * a Gradio version, this shouldn't be an issue...
  */
 
+:focus-visible {
+    outline: 2px solid var(--body-text-color) !important;
+}
+
+input:focus-visible,
+textarea:focus-visible {
+    outline: none !important;
+}
+
 #tou-card {
     max-width: 360px;
     padding: 1rem;
@@ -96,6 +105,10 @@
     object-fit: contain;
 }
 
+#example-prompts button:focus-visible {
+    outline-offset: -2px; /* Follow corners */
+}
+
 #example-prompts p {
     font-size: var(--text-md);
     display: -webkit-box;
@@ -152,6 +165,7 @@
 
 #gallery .thumbnails {
     bottom: 1.2vh;
+    height: auto;
 }
 
 #gallery .thumbnail-item {
@@ -163,7 +177,7 @@
 }
 
 #gallery .thumbnail-item:focus-visible {
-    outline: none;
+    outline-offset: -2px; /* Follow corners */
 }
 
 #delete-output-image-btn {
