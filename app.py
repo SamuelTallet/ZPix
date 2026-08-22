@@ -19,6 +19,7 @@ if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (12, 0):
 from sdnq import SDNQConfig  # noqa: F401
 
 from source.py.blocking_task import BlockingTask
+from source.py.custom_errors import BusyPortError
 from source.py.custom_theme import get_theme
 from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
@@ -947,16 +948,26 @@ if __name__ == "__main__":
         if args.in_browser:
             app.unload(lambda: close_server(app))
 
-    app.launch(
-        server_port=int(get_metadata("HTTP_PORT")),
-        inbrowser=args.in_browser,
-        favicon_path=assets_dir / "favicon_180.png",
-        theme=get_theme(),
-        footer_links=["gradio"],  # Credit
-        css_paths=[
-            app_dir / "source" / "css" / "pac-loader.css",
-            app_dir / "source" / "css" / "app.css",
-        ],
-        js=(app_dir / "source" / "app.js").read_text(),
-        allowed_paths=[output_dir],
-    )
+    try:
+        app.launch(
+            server_port=int(get_metadata("HTTP_PORT")),
+            inbrowser=args.in_browser,
+            favicon_path=assets_dir / "favicon_180.png",
+            theme=get_theme(),
+            footer_links=["gradio"],  # Credit
+            css_paths=[
+                app_dir / "source" / "css" / "pac-loader.css",
+                app_dir / "source" / "css" / "app.css",
+            ],
+            js=(app_dir / "source" / "app.js").read_text(),
+            allowed_paths=[output_dir],
+        )
+    except OSError as os_error:
+        # Don't blame a busy port unless Gradio says so.
+        if "empty port" not in str(os_error):
+            raise
+
+        raise BusyPortError(
+            "Looks like ZPix is already running."
+            " Please close all instances then run it again."
+        ) from os_error

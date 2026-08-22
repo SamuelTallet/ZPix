@@ -9,3 +9,11 @@ class EventAbort(Exception):
     with `show_error=False`, Gradio's `error_payload` returns
     `{"error": None}`, so this exception is only logged to the console.
     """
+
+
+class BusyPortError(Exception):
+    """Raised when the HTTP port the app serves on is already taken.
+
+    Usually means another ZPix instance is still running, but any other
+    process holding that port triggers it too.
+    """
