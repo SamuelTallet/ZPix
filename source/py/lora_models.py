@@ -111,6 +111,12 @@ def swap_lora(
                 normalized_lora,
                 adapter_name="lora_1",
             )
+
+            # Diffusers silently ignores LoRA keys it can't match to a module.
+            loaded = pipe.get_list_adapters().values()
+
+            if not any("lora_1" in adapters for adapters in loaded):
+                raise ValueError("No LoRA weights matched the pipeline modules.")
     except Exception as error:
         raise gr.Error(t("Failed to load LoRA."), duration=4) from error
 
