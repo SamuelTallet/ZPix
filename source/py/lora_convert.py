@@ -59,4 +59,13 @@ def to_diffusers(state: dict[str, Tensor], family: str) -> dict[str, Tensor]:
         return state
 
     # Diffusers FLUX.2 and Krea 2 LoRA converters don't handle .alpha keys.
-    return _fold_alphas(state)
+    state = _fold_alphas(state)
+
+    # Some Krea 2 LoRAs use Diffusers module names but omit their prefix.
+    # Example: https://huggingface.co/lvladikov/Krea2-Turbo-Distill-4step-LoRA
+    if family == "Krea 2" and any(
+        key.startswith("transformer_blocks.") for key in state
+    ):
+        state = {f"transformer.{key}": tensor for key, tensor in state.items()}
+
+    return state
