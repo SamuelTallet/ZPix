@@ -14,6 +14,7 @@ from source.py.custom_errors import EventAbort
 from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.image_pipe import ImagePipeline
+from source.py.lora_convert import to_diffusers
 from source.py.lora_model import LoraModel
 
 
@@ -98,13 +99,7 @@ def swap_lora(
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Can't check LoRA compatibility: {e}")
 
-    bfloat16_lora = lora.to_bf16()
-
-    # Workaround: Diffusers FLUX.2 LoRA converter doesn't handle .alpha keys.
-    if image_model.family == "FLUX.2":
-        bfloat16_lora = {
-            k: v for k, v in bfloat16_lora.items() if not k.endswith(".alpha")
-        }
+    normalized_lora = to_diffusers(lora.to_bf16(), image_model.family)
 
     try:
         with (
@@ -113,7 +108,7 @@ def swap_lora(
         ):
             pipe.unload_lora_weights()
             pipe.load_lora_weights(
-                bfloat16_lora,
+                normalized_lora,
                 adapter_name="lora_1",
             )
     except Exception as error:
