@@ -8,7 +8,6 @@
             "steps": 8,
             "cfg": 0.0
         },
-        "base_ids": ["zimage"],
         "features": ["text-to-image", "image-to-image"]
     },
     {
@@ -20,7 +19,6 @@
             "steps": 4,
             "cfg": 1.0
         },
-        "base_ids": ["flux2_klein_4b"],
         "features": ["text-to-image", "image-to-image"]
     },
     {
@@ -32,7 +30,6 @@
             "steps": 4,
             "cfg": 1.0
         },
-        "base_ids": ["flux2_klein_4b"],
         "features": ["text-to-image", "image-to-image"]
     },
     {
@@ -44,7 +41,6 @@
             "steps": 8,
             "cfg": 1.0
         },
-        "base_ids": ["anima"],
         "features": ["text-to-image", "image-to-image"]
     },
     {
@@ -56,7 +52,6 @@
             "steps": 30,
             "cfg": 4.0
         },
-        "base_ids": ["anima"],
         "features": ["text-to-image", "image-to-image"]
     },
     {
@@ -68,7 +63,6 @@
             "steps": 8,
             "cfg": 0.0
         },
-        "base_ids": ["krea2"],
         "features": ["text-to-image"]
     }
 ]

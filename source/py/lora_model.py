@@ -24,22 +24,6 @@ class LoraModel:
             for key in file.keys():  # noqa: SIM118
                 self.state[key] = file.get_tensor(key)
 
-    def base_model(self) -> str | None:
-        """Base model of this LoRA, from its metadata.
-
-        Raises:
-            TypeError: If base model in metadata is not a string.
-
-        Returns:
-            Base model as `str` or `None` if it is not in metadata.
-        """
-        base = self.metadata.get("ss_base_model_version")
-
-        if base is not None and type(base) is not str:
-            raise TypeError(f"Base model must be a str, got {type(base)}")
-
-        return base
-
     def trigger_phrase(self) -> str | None:
         """Trigger phrase of this LoRA, from its metadata.
 

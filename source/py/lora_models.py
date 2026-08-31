@@ -11,7 +11,6 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 
 from source.py.blocking_task import BlockingTask
 from source.py.custom_errors import EventAbort
-from source.py.custom_logger import logger
 from source.py.image_model import ImageModel
 from source.py.image_pipe import ImagePipeline
 from source.py.lora_convert import to_diffusers
@@ -88,17 +87,6 @@ def swap_lora(
         raise gr.Error("Pipeline doesn't support LoRA.")
 
     lora = LoraModel(path)
-
-    try:
-        if lora.base_model() not in image_model.base_ids:
-            gr.Warning(
-                f"{t('This LoRA seems incompatible with')} {image_model.name}.<br>"
-                f"{t('It might not work.')}",
-                duration=5,
-            )
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Can't check LoRA compatibility: {e}")
-
     normalized_lora = to_diffusers(lora.to_bf16(), image_model.family)
 
     try:
@@ -113,12 +101,17 @@ def swap_lora(
             )
 
             # Diffusers silently ignores LoRA keys it can't match to a module.
-            loaded = pipe.get_list_adapters().values()
+            loaded_adapters = pipe.get_list_adapters().values()
 
-            if not any("lora_1" in adapters for adapters in loaded):
+            if not any("lora_1" in adapters for adapters in loaded_adapters):
                 raise ValueError("No LoRA weights matched the pipeline modules.")
     except Exception as error:
-        raise gr.Error(t("Failed to load LoRA."), duration=4) from error
+        raise gr.Error(
+            t("Ensure you selected a LoRA for {family}.").format(
+                family=image_model.family
+            ),
+            duration=5,
+        ) from error
 
     trigger_word = lora.trigger_word()
 

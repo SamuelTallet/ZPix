@@ -37,11 +37,6 @@ class ImageModel(BaseModel):
     default: Settings
     """Default settings of this model."""
 
-    base_ids: list[str]
-    """Known IDs of base image model.
-    Example: zimage
-    """
-
     features: list[
         Literal[
             "text-to-image",
