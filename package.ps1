@@ -23,7 +23,7 @@ $include = @(
 )
 $appName = Get-Content "metadata\NAME"
 $version = Get-Content "metadata\VERSION"
-$archive = "$appName-v$version-Windows.zip"
+$archive = "${appName}_${version}_Windows.zip"
 $distDir = "dist"
 
 # Copy the listed items into a temp folder to keep their paths in the archive

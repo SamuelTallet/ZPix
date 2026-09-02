@@ -8,17 +8,17 @@ Hotswap LoRAs. Drag reference images directly from output gallery, which is alwa
 ## Quick start
 
 Windows:
-1. Download and extract [ZPix-v1.0.8-Windows.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix-v1.0.8-Windows.zip)
+1. Download and extract [ZPix_1.0.8_Windows.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix_1.0.8_Windows.zip)
 2. Run `ZPix.exe`
     - If SmartScreen pops, click on "More info", "Run anyway"
     - If a DLL is missing, install [Visual C++ Redist](https://aka.ms/vc14/vc_redist.x64.exe) and re-run
 
-Linux:
-1. Download and extract [ZPix-v1.0.8-Linux.tar.gz](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix-v1.0.8-Linux.tar.gz)
-2. Run `./start.sh`
+Debian/Ubuntu:
+1. Download and install [zpix_1.0.8-1_all.deb](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/zpix_1.0.8-1_all.deb)
+2. Run ZPix from app launcher
 
 macOS:
-1. Download and open [ZPix-v1.0.8-macOS.dmg](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix-v1.0.8-macOS.dmg)
+1. Download and open [ZPix_1.0.8_AppleSilicon.dmg](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix_1.0.8_AppleSilicon.dmg)
 2. Drag ZPix to Applications
 3. Run ZPix from Applications
     - If the app doesn't launch, go to system "Settings" > "Privacy & Security", click on "Open Anyway"

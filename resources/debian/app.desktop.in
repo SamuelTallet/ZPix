@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=@NAME@
+Comment=@DESCRIPTION@
+Exec=bash -c '/opt/@NAME@/start.sh || read -rp "Press Enter to close..."'
+Icon=@PACKAGE@
+Terminal=true
+Categories=Graphics;2DGraphics;

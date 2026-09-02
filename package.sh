@@ -6,8 +6,8 @@ shopt -s failglob
 
 target=${1:-}
 
-if [ "$target" != "Linux" ] && [ "$target" != "macOS" ]; then
-    echo "Usage: $0 Linux or $0 macOS" >&2
+if [ "$target" != "deb" ] && [ "$target" != "dmg" ]; then
+    echo "Usage: $0 deb or $0 dmg" >&2
     exit 1
 fi
 
@@ -28,14 +28,16 @@ include=(
 
 appName=$(cat metadata/NAME)
 version=$(cat metadata/VERSION)
+description=$(cat metadata/DESCRIPTION)
+homeUrl=$(cat metadata/HOME_URL)
 distDir="dist"
 
-# tar keeps permission bit.
+# tar & dpkg-deb keep permission bit.
 chmod +x start.sh
 
 mkdir -p "$distDir"
 
-if [ "$target" = "macOS" ]; then
+if [ "$target" = "dmg" ]; then
     # The app is shipped as a bundle, inside a disk image.
     imageDir="$distDir/image"
     bundle="$imageDir/$appName.app"
@@ -69,18 +71,67 @@ if [ "$target" = "macOS" ]; then
 
     ln -s /Applications "$imageDir/Applications"
 
-    archive="$appName-v$version-$target.dmg"
+    archive="${appName}_${version}_AppleSilicon.dmg"
     hdiutil create -volname "$appName $version" -srcfolder "$imageDir" \
         -ov -format UDZO "$distDir/$archive" > /dev/null
 
     rm -rf "$imageDir"
 else
-    # The app is shipped as a tarball.
-    # Prevent macOS tar from adding AppleDouble "._*" metadata files.
-    export COPYFILE_DISABLE=1
+    # The app is shipped as a Debian package.
+    if ! command -v dpkg-deb > /dev/null 2>&1; then
+        echo "Error: dpkg-deb is required to build a Debian package" >&2
+        exit 1
+    fi
 
-    archive="$appName-v$version-$target.tar.gz"
-    tar -czf "$distDir/$archive" "${include[@]}"
+    # Package names are lowercase and versions use "~" to mark a pre-release,
+    # "-" being reserved as the separator of the Debian revision.
+    package=$(echo "$appName" | tr '[:upper:]' '[:lower:]')
+    debVersion="${version//-/\~}-1"
+
+    # curl or wget bootstraps uv, zenity or kdialog backs the file pickers.
+    depends="ca-certificates, curl | wget, zenity | kdialog"
+
+    rootDir="$distDir/deb"
+    appDir="$rootDir/opt/$appName"
+    iconDir="$rootDir/usr/share/icons/hicolor/256x256/apps"
+    rm -rf "$rootDir"
+    mkdir -p "$rootDir/DEBIAN" "$appDir" "$iconDir" \
+        "$rootDir/usr/share/applications"
+
+    for item in "${include[@]}"; do
+        itemDir="$appDir/$(dirname "$item")"
+        mkdir -p "$itemDir"
+        cp -R "$item" "$itemDir/"
+    done
+
+    cp resources/neutral/icon_256.png "$iconDir/$package.png"
+
+    sed -e "s|@NAME@|$appName|g" \
+        -e "s|@PACKAGE@|$package|g" \
+        -e "s|@DESCRIPTION@|$description|g" \
+        resources/debian/app.desktop.in \
+        > "$rootDir/usr/share/applications/$package.desktop"
+
+    # Installed-Size is an estimate of the disk usage, in kibibytes.
+    installedSize=$(du -sk --exclude=DEBIAN "$rootDir" | cut -f1)
+
+    # "#" delimits below because the dependencies contain a "|" alternative.
+    sed -e "s#@PACKAGE@#$package#g" \
+        -e "s#@VERSION@#$debVersion#g" \
+        -e "s#@INSTALLED_SIZE@#$installedSize#g" \
+        -e "s#@DEPENDS@#$depends#g" \
+        -e "s#@DESCRIPTION@#$description#g" \
+        -e "s#@HOME_URL@#$homeUrl#g" \
+        resources/debian/control.in > "$rootDir/DEBIAN/control"
+
+    # md5sums lets dpkg -V and debsums check the installed files.
+    (cd "$rootDir" && find * -type f ! -path 'DEBIAN/*' -exec md5sum {} +) \
+        > "$rootDir/DEBIAN/md5sums"
+
+    archive="${package}_${debVersion}_all.deb"
+    dpkg-deb --build --root-owner-group "$rootDir" "$distDir/$archive" > /dev/null
+
+    rm -rf "$rootDir"
 fi
 
 echo "Archive $distDir/$archive created."

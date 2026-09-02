@@ -1,0 +1,10 @@
+Package: @PACKAGE@
+Version: @VERSION@
+Architecture: all
+Maintainer: Samuel Tallet <samuel.tallet@gmail.com>
+Installed-Size: @INSTALLED_SIZE@
+Depends: @DEPENDS@
+Section: graphics
+Priority: optional
+Homepage: @HOME_URL@
+Description: @DESCRIPTION@
