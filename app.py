@@ -38,7 +38,12 @@ from source.py.lora_models import (
 from source.py.os_abstract import open_with_default_app
 from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
-from source.py.ref_images import show_ref_image_strength
+from source.py.ref_images import (
+    get_ref_images_file_count,
+    get_ref_images_label,
+    show_ref_image_strength,
+    update_ref_images,
+)
 from source.py.resolutions import get_aspects_and_resolutions
 from source.py.server_close import close_server
 from source.py.translations import get_translate_func
@@ -290,9 +295,9 @@ if __name__ == "__main__":
                     )
                 ) as reference_images_row:
                     reference_images = gr.MultimodalTextbox(
-                        label=t("Reference Images"),
+                        label=get_ref_images_label(image_pipe, t),
                         sources=["upload"],
-                        file_count="multiple",
+                        file_count=get_ref_images_file_count(image_pipe),
                         file_types=["image"],
                         max_plain_text_length=0,
                         submit_btn=False,
@@ -316,10 +321,15 @@ if __name__ == "__main__":
                         value=0.5,
                     )
 
+                # On reference images change: show the reference strength row if
+                # the loaded model uses it, and update the reference images block.
                 reference_images.change(
-                    partial(show_ref_image_strength, image_pipe),
-                    inputs=reference_images,
-                    outputs=ref_image_strength_row,
+                    lambda image_model, ref_images: (
+                        show_ref_image_strength(image_pipe, ref_images),
+                        update_ref_images(image_model, image_pipe, ref_images, t),
+                    ),
+                    inputs=[model, reference_images],
+                    outputs=[ref_image_strength_row, reference_images],
                     show_progress="hidden",
                 )
 
@@ -642,12 +652,19 @@ if __name__ == "__main__":
                                 else ["hidden"]
                             )
                         ),
+                        update_ref_images(image_model, image_pipe, ref_images, t),
                         show_ref_image_strength(image_pipe, ref_images),
                         gr.update(value=image_model.default.steps),
                         gr.update(value=image_model.default.cfg),
                     ),
                     inputs=[model, reference_images],
-                    outputs=[reference_images_row, ref_image_strength_row, steps, cfg],
+                    outputs=[
+                        reference_images_row,
+                        reference_images,
+                        ref_image_strength_row,
+                        steps,
+                        cfg,
+                    ],
                     show_progress="hidden",
                 ).then(
                     lambda: gr.update(interactive=True),
