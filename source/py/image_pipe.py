@@ -480,6 +480,12 @@ class ImagePipeline:
         whether a reference holds the weights or the segments are merely split too
         fine to return.
         """
+        # Mac neither reclaims nor offloads, and reads one shared budget for the
+        # free and the total alike: no reserve of ours to split, and no remainder
+        # to stand for what the rest of the machine took.
+        if torch.backends.mps.is_available():
+            return
+
         memory_info = get_memory_info()
 
         if memory_info is None:
@@ -1306,6 +1312,8 @@ class ImagePipeline:
                 torch.cuda.empty_cache()
             elif torch.xpu.is_available():
                 torch.xpu.empty_cache()
+            elif torch.backends.mps.is_available():
+                torch.mps.empty_cache()
 
             loaded = self.load(model)
             logger.info(f"Switched to {model.name}.")
