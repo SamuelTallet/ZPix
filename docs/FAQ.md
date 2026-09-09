@@ -17,14 +17,12 @@ Things you can do:
 
 - Return to LoRA source page, authors often give usage tips (e.g. a lower LoRA strength, a trigger word) and prompts examples.
 - Generate an image with a different seed.
-- Ensure LoRA is compatible with image model currently loaded.
 
-## How can I upgrade to latest version?
+## How to update to the latest version?
 
 1. Close ZPix.
-2. Remove folder containing `ZPix.exe`.
-3. Download [latest](https://github.com/SamuelTallet/ZPix/releases/latest) `ZPix.zip` and extract it to any location.
-4. Run `ZPix.exe` from that location.
+2. Go to [latest release](https://github.com/SamuelTallet/ZPix/releases/latest).
+3. Follow instructions in "How to update" section, at the bottom.
 
 ## Can I use ZPix for commercial purposes?
 
@@ -40,13 +38,20 @@ Once model is downloaded, yes.
 
 ## I got an error without details, how to know more?
 
+### Windows
 1. Close application.
 2. Create a file named `DEBUG` next to `ZPix.exe`.
 3. Restart application; notice that a console stays open in background.
 4. Repeat actions that previously triggered this error.
 5. Look at console output.
 
+### Linux and macOS
+Look at console output.
+
 ## How to uninstall this application?
 
-Since it's a no-installer application, close it and just delete its folder.<br>
-For a deep uninstall, run `clean.cmd` before deleting application folder.
+### Windows
+Close it, then delete its folder.
+
+### Linux and macOS
+Close it, then uninstall it like any other applications.
