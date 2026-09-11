@@ -34,14 +34,20 @@ Once automatic setup is done:
 
 ## Recommended configuration
 
+### PC
+
 - GPU: NVIDIA RTX 30/40/50 series with 8GB VRAM or more
 - 32GB RAM (16GB also works but slower)
+
+### Mac
+
+- 24GB of unified memory or more
 
 ## Features
 
 ### One-click install
 
-ZPix setups Python environment and packages for you.
+ZPix sets up the Python environment and packages for you.
 
 ### Five models
 
