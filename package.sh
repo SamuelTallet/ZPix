@@ -94,8 +94,9 @@ else
     rootDir="$distDir/deb"
     appDir="$rootDir/opt/$appName"
     iconDir="$rootDir/usr/share/icons/hicolor/256x256/apps"
+    docDir="$rootDir/usr/share/doc/$package"
     rm -rf "$rootDir"
-    mkdir -p "$rootDir/DEBIAN" "$appDir" "$iconDir" \
+    mkdir -p "$rootDir/DEBIAN" "$appDir" "$iconDir" "$docDir" \
         "$rootDir/usr/share/applications"
 
     for item in "${include[@]}"; do
@@ -111,6 +112,10 @@ else
         -e "s|@DESCRIPTION@|$description|g" \
         resources/debian/app.desktop.in \
         > "$rootDir/usr/share/applications/$package.desktop"
+
+    sed -e "s|@NAME@|$appName|g" \
+        -e "s|@HOME_URL@|$homeUrl|g" \
+        resources/debian/copyright.in > "$docDir/copyright"
 
     # Installed-Size is an estimate of the disk usage, in kibibytes.
     installedSize=$(du -sk --exclude=DEBIAN "$rootDir" | cut -f1)
