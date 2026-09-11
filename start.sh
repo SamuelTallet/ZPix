@@ -118,7 +118,7 @@ fi
 
 # Python environment is maybe broken so it's safer to resetup it everytime.
 # Wasted time is not so important thanks to uv cache.
-"$uv_exe" venv --python 3.14 --clear --force "$VIRTUAL_ENV"
+"$uv_exe" venv --python-preference only-managed --python 3.14 --clear --force "$VIRTUAL_ENV"
 
 echo "Installing dependencies in $VIRTUAL_ENV..."
 
