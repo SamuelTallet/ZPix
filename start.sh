@@ -6,9 +6,11 @@ set -euo pipefail
 # Relative paths below resolve from this script.
 cd "$(dirname "$0")"
 
-os=$(uname -s); arch=$(uname -m)
+version=$(cat ./metadata/VERSION)
+echo "Starting ZPix $version..."
+printf '\033]0;ZPix %s\007' "$version"
 
-echo "Starting ZPix $(cat ./metadata/VERSION)..."
+os=$(uname -s); arch=$(uname -m)
 echo "Detected platform: $os ($arch)"
 
 # Cache directory, maybe overridden by XDG_CACHE_HOME.
