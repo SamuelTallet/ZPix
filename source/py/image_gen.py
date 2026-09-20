@@ -1,12 +1,14 @@
 """Image generation."""
 
 from collections.abc import Callable
+from inspect import signature
 from pathlib import Path
 from random import randint
 from shutil import rmtree
 
 import gradio as gr
 import torch
+from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
 
 from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
@@ -113,15 +115,22 @@ def generate(
         "generator": torch.manual_seed(used_seed),
     }
 
-    if model.has_modular_pipeline():
+    # Asked of the pipeline in hand rather than of the model, which answers for
+    # the family and not for what the load ended up building.
+    if isinstance(pipe, ModularPipeline):
         if "guider" in pipe.component_names:
             guider_spec = pipe.get_component_spec("guider")
             pipe.update_components(
                 guider=guider_spec.create(guidance_scale=max(float(cfg), 1.0))
             )
     else:
-        # Standard pipelines take CFG as a call argument.
-        pipe_kwargs["guidance_scale"] = float(cfg)
+        # Standard pipelines take CFG as a call argument, named after what the
+        # family scales, and refuse the one they don't declare.
+        call_params = signature(type(pipe).__call__).parameters
+        cfg_argument = (
+            "true_cfg_scale" if "true_cfg_scale" in call_params else "guidance_scale"
+        )
+        pipe_kwargs[cfg_argument] = float(cfg)
 
     if ref_images:
         if uses_strength:

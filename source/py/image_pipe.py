@@ -35,6 +35,7 @@ from source.py.offload_strat import (
     DenoiserFirstOffloadStrategy,
     eviction_rank,
 )
+from source.py.qwen21_flash import install_qwen21_flash_attn
 from source.py.resolutions import smallest_picture_pixels
 from source.py.run_memory import RunMemory, read_architecture
 
@@ -340,7 +341,7 @@ class ImagePipeline:
                     self.instance.transformer.reset_attention_backend()
                     logger.warning(f"FlashAttention is not available: {e}")
 
-            # These two families mask their attention and the backend refuses any
+            # These families mask their attention and the backend refuses any
             # attn_mask, while the flash_attn package unpads around it.
             elif model.family == "Anima":
                 try:
@@ -352,6 +353,13 @@ class ImagePipeline:
                     install_krea2_flash_attn(self.instance)
                 except Exception as e:  # noqa: BLE001
                     logger.warning(f"FlashAttention is not available for Krea 2: {e}")
+            elif model.family == "Qwen-Image 2.1":
+                try:
+                    install_qwen21_flash_attn(self.instance)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        f"FlashAttention is not available for Qwen-Image 2.1: {e}"
+                    )
 
         try:
             self.instance.vae.to(memory_format=torch.channels_last)

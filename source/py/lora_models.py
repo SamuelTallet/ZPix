@@ -154,6 +154,12 @@ def unload_lora(image_pipe: ImagePipeline):
     """
     pipe = image_pipe.instance
 
+    # A swap unloads before it loads, and a load that failed left nothing behind.
+    # Having no pipeline is not a pipeline refusing LoRA, and the error raised for
+    # it reaches the user as a second failure while the fallback is under way.
+    if pipe is None:
+        return
+
     if not isinstance(pipe, LoraBaseMixin):
         raise gr.Error("Pipeline doesn't support LoRA.")
 

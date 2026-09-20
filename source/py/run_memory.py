@@ -558,6 +558,15 @@ def convolved_axes(vae: torch.nn.Module) -> int:
     A kernel carries one entry per axis it slides along. Two where none is found,
     that being what a picture has.
     """
+    # A family folding its time axis into the batch slides a two-axis kernel over
+    # a stream that carries three, so its modules give the axis away nowhere and
+    # the configuration is the only place left to read it.
+    config = getattr(vae, "config", None)
+
+    for name in ("scale_factor_temporal", "temporal_compression_ratio"):
+        if getattr(config, name, None):
+            return 3
+
     for _, child in vae.named_modules():
         size = getattr(child, "kernel_size", None)
 
