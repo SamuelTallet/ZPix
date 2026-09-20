@@ -74,37 +74,75 @@ Write-Host "Installing..." -ForegroundColor Blue
 
 . "source\ps\venv_creation.ps1"
 . "source\ps\package_utils.ps1"
+. "source\ps\pytorch_cuda.ps1"
+
+# The optimized marker is removed by `uv venv --clear`, that's consistent.
+New-VirtualEnv -Python "3.14" -Uv $uv
 
 # Python venv is currently optimized?
 $optimized = $false
 
 if ($gpu.Vendor -eq "NVIDIA") {
-    New-VirtualEnv -Python "3.14" -Uv $uv
+    # uv selects the PyTorch backend matching the installed CUDA driver.
+    Install-Dependency -Spec "torch==2.13.0" -Backend "auto" -Uv $uv
+    Install-Dependency -Spec "torchvision==0.28.0" -Backend "auto" -Uv $uv
+
     try {
         Write-Host "Trying optimized setup for your NVIDIA GPU..."
-        Install-Torch -Version "2.13.0+cu130" -IndexUrl "cu130" -Uv $Uv
-        Install-TorchVision -Version "0.28.0+cu130" -IndexUrl "cu130" -Uv $Uv
-        Install-Dependency -Spec "triton-windows==3.7.1.post27" -Uv $Uv
-        Install-Dependency -Spec "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.52/flash_attn-2.8.3+cu130torch2.13-cp314-cp314-win_amd64.whl" -Uv $Uv
-        Install-Requirements -File "requirements.txt" -Uv $Uv
+
+        $cuda = Get-CudaVersion -Uv $uv
+        if (-not $cuda) {
+            throw "PyTorch was installed without CUDA support"
+        }
+
+        Install-Dependency -Spec "triton-windows==3.7.1.post27" -Uv $uv
+
+        # Each FlashAttention wheel targets one CUDA build; we follow uv's pick.
+        $cudaTag = switch ($cuda) {
+            "12.6" { "cu126" }
+            "13.0" { "cu130" }
+            "13.2" { "cu132" }
+            Default { "" }
+        }
+        if (-not $cudaTag) {
+            throw "No FlashAttention wheel mapped to CUDA $cuda"
+        }
+
+        Install-Dependency -Spec "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.52/flash_attn-2.8.3+${cudaTag}torch2.13-cp314-cp314-win_amd64.whl" -Uv $uv
         $optimized = $true
     }
     catch {
-        Write-Warning "NVIDIA setup failed, falling back to default setup."
+        Write-Warning "Can't optimize NVIDIA setup: $($_.Exception.Message)"
     }
 }
+elseif ($gpu.Vendor -eq "AMD") {
+    $rocmIndex = "https://stable.repo.amd.com/rocm/whl-next/"
+
+    Install-Dependency -Spec "rocm[libraries,device-all]==10.0.0" -IndexUrl $rocmIndex -Uv $uv
+    Install-Dependency -Spec "torch[device-all]==2.13.0+rocm10.0.0" -IndexUrl $rocmIndex -Uv $uv
+    Install-Dependency -Spec "torchvision[device-all]==0.28.0+rocm10.0.0" -IndexUrl $rocmIndex -Uv $uv
+
+    try {
+        Write-Host "Trying optimized setup for your AMD GPU..."
+        Install-Dependency -Spec "triton-windows==3.7.1.post27" -Uv $uv
+        # TODO Install FlashAttention-2.
+        $optimized = $true
+    }
+    catch {
+        Write-Warning "Can't optimize AMD setup: $($_.Exception.Message)"
+    }
+}
+else {
+    # Intel or unknown vendor.
+    Install-Dependency -Spec "torch==2.13.0" -Backend "auto" -Uv $uv
+    Install-Dependency -Spec "torchvision==0.28.0" -Backend "auto" -Uv $uv
+}
+
+Install-Requirements -File "requirements.txt" -Uv $uv
 
 if ($optimized) {
     # We leave a marker in venv for next start to skip installation.
     New-Item -ItemType File -Path ".venv\optimized" -Force | Out-Null
-}
-else {
-    # This marker is removed by `uv venv --clear`, that's consistent.
-    New-VirtualEnv -Python "3.14" -Uv $uv
-    Write-Host "Trying default setup..."
-    Install-Torch -Version "2.13.0" -Backend "auto" -Uv $Uv
-    Install-TorchVision -Version "0.28.0" -Backend "auto" -Uv $Uv
-    Install-Requirements -File "requirements.txt" -Uv $Uv
 }
 
 Write-Host "Installation complete." -ForegroundColor Green
