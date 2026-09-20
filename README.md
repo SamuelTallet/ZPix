@@ -34,14 +34,9 @@ Once automatic setup is done:
 
 ## Recommended configuration
 
-### PC
-
+- OS: Windows or Linux
 - GPU: NVIDIA RTX 30/40/50 series with 8GB VRAM or more
-- 32GB RAM (16GB also works but slower)
-
-### Mac
-
-- 24GB of unified memory or more
+- RAM: 32GB (16GB also works but slower)
 
 ## Features
 
