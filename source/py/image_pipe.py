@@ -246,8 +246,9 @@ class ImagePipeline:
         self.total_memory = 0
         """The GPU memory, in bytes, as read when the pipeline was loaded."""
 
-        self.streams_weights = False
-        """Are the weights streamed submodule by submodule, leaving the GPU free?"""
+        self.offloads_weights = False
+        """Do the weights cross the bus a model at a time, only the one in use
+        sitting on the GPU?"""
 
         self.streams_denoiser = False
         """Is the denoiser left on CPU, the resolution leaving it no seat?"""
@@ -381,7 +382,7 @@ class ImagePipeline:
         self.residency_reserve = 0
         self.memory_budget = None
         self.free_memory, self.total_memory = memory_info or (0, 0)
-        self.streams_weights = False
+        self.offloads_weights = False
         self.streams_denoiser = False
         self.settled = 0
         self.warmed_up_streams = set()
@@ -424,10 +425,11 @@ class ImagePipeline:
     def measure_memory_budget(self, memory_info: tuple[int, int] | None) -> int | None:
         """Measure the GPU memory a single VAE pass can count on, in bytes.
 
-        Only the weights that can't leave the GPU are deducted, which under the
-        offload strategy is the VAE itself: by the time a pass runs, the encoders
+        Only the weights that can't leave the GPU are deducted, which under
+        either offload is the VAE itself: by the time a pass runs, the encoders
         are done and the denoiser has taken its last step, so every sibling is
-        evictable. It starts from the free memory, never the total: the desktop
+        evictable, where the decoder is the one component the pass holds by
+        definition. It starts from the free memory, never the total: the desktop
         takes its cut first, and a share of the GPU would ignore it.
 
         Args:
@@ -442,16 +444,14 @@ class ImagePipeline:
 
         free_memory = memory_info[0]
 
-        # Streamed weights never claim the GPU, leaving all of it to the pass.
-        if self.streams_weights:
-            return free_memory
-
         def footprint_of(component) -> int:
             get_footprint = getattr(component, "get_memory_footprint", None)
 
             return get_footprint() if get_footprint is not None else 0
 
-        if self.offload_strategy is not None:
+        # Model offload leaves the decoder on the GPU for the whole of its pass,
+        # and a budget blind to it tiles nothing and overflows instead.
+        if self.offloads_weights or self.offload_strategy is not None:
             resident = footprint_of(getattr(self.instance, "vae", None))
         else:
             # Nothing evicts on Mac: the whole pipeline stays on the GPU.
@@ -947,8 +947,8 @@ class ImagePipeline:
             return
 
         if isinstance(self.instance, DiffusionPipeline):
-            self.instance.enable_sequential_cpu_offload()
-            self.streams_weights = True
+            self.instance.enable_model_cpu_offload()
+            self.offloads_weights = True
             return
 
         self.streams_denoiser = stream_denoiser
@@ -1252,7 +1252,7 @@ class ImagePipeline:
         """Drop the CPU offload hooks for the time of a weight edit.
 
         Loading a LoRA, Diffusers removes them itself, then restores them with
-        `enable_sequential_cpu_offload()`, which a modular pipeline lacks: it
+        `enable_model_cpu_offload()`, which a modular pipeline lacks: it
         raises, leaving every component unhooked on CPU. Only the Accelerate
         hooks are visible to it, hence a crash reserved to a pipeline with a
         component streamed, whatever put it on CPU.
