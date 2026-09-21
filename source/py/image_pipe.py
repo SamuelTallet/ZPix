@@ -3,6 +3,7 @@
 import gc
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from inspect import signature
 from itertools import chain
 from os import environ
 from pathlib import Path
@@ -128,6 +129,23 @@ PIXELS_PER_MEGAPIXEL = 1e6
 Decimal, as the word is used of pictures, where memory stays binary. The bases
 don't meet, which costs nothing as long as the same conversion sizes every
 picture, no figure here being per megapixel to begin with.
+"""
+
+LATENT_TILE_SIDE = 32
+"""Latent cells along a side of the smallest tile a decode is given.
+
+What Diffusers' defaults come to against a VAE compressing by eight, their 256
+pixels over that ratio. Held in latent, which is what the blend between two
+tiles works with.
+"""
+
+LATENT_TILE_STEP = 16
+"""Latent cells a tile grows by where the budget holds a larger one."""
+
+LATENT_TILE_OVERLAP = 4
+"""In quarters of a tile, what two neighbours share and are blended across.
+
+One quarter, as Diffusers' own figures come to: 192 of stride under 256 of tile.
 """
 
 
@@ -932,8 +950,73 @@ class ImagePipeline:
             vae, "enable_tiling" if needs_tiling else "disable_tiling", None
         )
 
-        if toggle is not None:
+        if toggle is None:
+            return
+
+        sides = self.tile_sides(vae, pixels) if needs_tiling else None
+
+        if sides is None:
             toggle()
+
+            return
+
+        tile, stride = sides
+        toggle(tile, tile, stride, stride)
+
+        logger.info(f"Decoding in {tile}px tiles, {stride}px apart.")
+
+    def tile_sides(
+        self, vae: torch.nn.Module, pixels: int
+    ) -> tuple[int, int] | None:
+        """A tile of the picture and the stride between two, in pixels, or `None`.
+
+        Diffusers sizes a tile in pixels, and every family's figures were written
+        against a VAE compressing by eight. One compressing twice as hard is
+        handed half the latent for the same tile, and the blend then runs on too
+        few cells to hide the seam: on a 16x decoder, the defaults streaked a
+        picture a hundredfold against the same latent decoded whole. Sized here
+        in latent, multiplied back out, then grown to the largest the budget
+        holds.
+
+        Nothing here reaches a margin or a residency: only the seam moves.
+
+        Args:
+            vae: The VAE whose decode is to be tiled.
+            pixels: Pixels of the picture to generate.
+        """
+        ratio = getattr(vae, "spatial_compression_ratio", 0)
+        enable = getattr(vae, "enable_tiling", None)
+
+        if not ratio or enable is None:
+            return None
+
+        try:
+            sized = "tile_sample_min_height" in signature(enable).parameters
+        except (TypeError, ValueError):
+            return None
+
+        # Several families take no sizes, and handing them one raises.
+        if not sized:
+            return None
+
+        budget = self.memory_budget or 0
+        side = LATENT_TILE_SIDE
+
+        # A tile past a side of the picture tiles nothing, the budget
+        # answering for the rest whatever the shape.
+        picture_side = int(pixels**0.5)
+
+        while True:
+            grown = (side + LATENT_TILE_STEP) * ratio
+
+            if grown >= picture_side or self.decode_bytes(grown**2) > budget:
+                break
+
+            side += LATENT_TILE_STEP
+
+        tile = side * ratio
+
+        return tile, tile - tile // LATENT_TILE_OVERLAP
 
     def offload_to_cpu(self, total_memory: int, stream_denoiser: bool = False) -> None:
         """Offload the pipeline weights to CPU, keeping on GPU what fits.
