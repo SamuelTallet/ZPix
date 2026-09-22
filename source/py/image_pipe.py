@@ -490,11 +490,10 @@ class ImagePipeline:
             # Nothing evicts on Mac: the whole pipeline stays on the GPU.
             resident = sum(map(footprint_of, self.instance.components.values()))
 
-        # What is left once the weights that can't leave have taken their cut, and
-        # nothing else. Floored at the reserve, which is read off a picture and can
-        # want more than the card holds, it would promise a pass memory the GPU was
-        # never going to give it.
-        budget = max(free_memory - resident, 0)
+        # Growing a band to all remaining VRAM leaves no room for allocator
+        # overhead or changes in desktop usage. Keep the same headroom as the
+        # denoiser: a decode can otherwise spill into host memory on Windows.
+        budget = max(free_memory - resident - RESERVED_MEMORY, 0)
 
         # Told as a picture rather than as a size, that being the question it
         # answers, and against this decoder's own cost per pixel: the same budget
@@ -768,9 +767,9 @@ class ImagePipeline:
         # The whole pass is that phase only where the pass runs whole. A tiled one
         # is bounded by its tile, and asked for the picture's figure it names a
         # reserve as large as the card, which reads downstream as unreachable and
-        # leaves the residency untouched. Told apart here as `tile_vae_if_needed`
-        # tells `decode_margin` apart, and off the same `tiles_decode`, so the two
-        # can't disagree.
+        # leaves the residency untouched. Keep the loop's reserve for a tiled
+        # pass here; `decode_margin` frees the selected band's room on demand,
+        # after the denoiser has finished.
         self.residency_reserve = (
             self.run_margin
             if self.tiles_decode(pixels)
@@ -946,12 +945,16 @@ class ImagePipeline:
             return
 
         needs_tiling = self.tiles_decode(pixels)
+        sides = self.tile_sides(vae, width, height) if needs_tiling else None
 
-        # What the pass itself needs, the reserve standing in where it can't be
-        # sized: tiling bounds a pass unmeasurably.
-        self.decode_margin = (
-            self.memory_reserve if needs_tiling else self.decode_bytes(pixels)
-        )
+        # A grown band can ask for much more than the denoising loop. Free room
+        # for that actual band, including the headroom withheld from its budget.
+        # Families whose tiles can't be sized retain the existing fallback.
+        if needs_tiling and sides is None:
+            self.decode_margin = self.memory_reserve
+        else:
+            decode_pixels = min(sides[0], height) * width if sides else pixels
+            self.decode_margin = self.decode_bytes(decode_pixels) + RESERVED_MEMORY
 
         # The run's own margin is not asked for here: sized on it, the strategy
         # would evict every sibling on each arrival, where the allocator gives
@@ -971,8 +974,6 @@ class ImagePipeline:
 
         if toggle is None:
             return
-
-        sides = self.tile_sides(vae, width, height) if needs_tiling else None
 
         if sides is None:
             toggle()
@@ -1004,8 +1005,7 @@ class ImagePipeline:
         once. No blend was measured exact, so what is chosen here is how much of
         the picture a join is allowed to cross, never whether there is one.
 
-        Nothing here reaches a margin or a residency: what it settles is where
-        the decode is cut, not what the card is asked for.
+        The caller also uses this area to free enough room before decoding.
 
         Args:
             vae: The VAE whose decode is to be tiled.
@@ -1289,6 +1289,9 @@ class ImagePipeline:
             # The pass's own margin, never the run's: the siblings freed here are
             # wanted again at the next generation.
             margin = self.decode_margin or self.memory_reserve
+            # This wrapper runs before the VAE's onload hook. Its absent weights
+            # will also need room after the siblings have been evicted.
+            margin += tensor_bytes(vae) - tensor_bytes(vae, device=device)
 
             # Cached activation blocks read as used until handed back: reclaim
             # before measuring, or the figure is stale.
