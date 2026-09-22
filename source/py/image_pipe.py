@@ -283,10 +283,6 @@ class ImagePipeline:
         self.total_memory = 0
         """The GPU memory, in bytes, as read when the pipeline was loaded."""
 
-        self.offloads_weights = False
-        """Do the weights cross the bus a model at a time, only the one in use
-        sitting on the GPU?"""
-
         self.streams_denoiser = False
         """Is the denoiser left on CPU, the resolution leaving it no seat?"""
 
@@ -419,7 +415,6 @@ class ImagePipeline:
         self.residency_reserve = 0
         self.memory_budget = None
         self.free_memory, self.total_memory = memory_info or (0, 0)
-        self.offloads_weights = False
         self.streams_denoiser = False
         self.settled = 0
         self.warmed_up_streams = set()
@@ -464,11 +459,8 @@ class ImagePipeline:
     def measure_memory_budget(self, free_memory: int | None) -> int | None:
         """Measure the GPU memory a single VAE pass can count on, in bytes.
 
-        Only the weights that can't leave the GPU are deducted, which under
-        either offload is the VAE itself: by the time a pass runs, the encoders
-        are done and the denoiser has taken its last step, so every sibling is
-        evictable, where the decoder is the one component the pass holds by
-        definition. It starts from the free memory, never the total: the desktop
+        With offload, only the VAE's weights are deducted; otherwise, all
+        components are counted. The budget starts from free memory: the desktop
         takes its cut first, and a share of the GPU would ignore it.
 
         What it decides is not how a seam falls but whether there is one: no
@@ -492,7 +484,7 @@ class ImagePipeline:
 
         # Model offload leaves the decoder on the GPU for the whole of its pass,
         # and a budget blind to it tiles nothing and overflows instead.
-        if self.offloads_weights or self.offload_strategy is not None:
+        if self.offload_strategy is not None:
             resident = footprint_of(getattr(self.instance, "vae", None))
         else:
             # Nothing evicts on Mac: the whole pipeline stays on the GPU.
@@ -1066,16 +1058,10 @@ class ImagePipeline:
         if self.instance is None:
             return
 
-        if isinstance(self.instance, DiffusionPipeline):
-            self.instance.enable_model_cpu_offload()
-            self.offloads_weights = True
-            return
-
         self.streams_denoiser = stream_denoiser
 
-        # A modular pipeline has no offload helper: replicate the auto CPU offload
-        # of its components manager, which hooks every component, including those
-        # too large to stay on the GPU.
+        # Both pipeline types expose their components. Place them with the same
+        # strategy, independently of the pipeline's own CPU offload helpers.
         device = get_execution_device()
 
         # Two figures, two questions: what each arrival leaves behind is the
@@ -1173,6 +1159,7 @@ class ImagePipeline:
                 if other_hook is not hook:
                     hook.add_other_hook(other_hook)
 
+        # Using Diffusers' _all_hooks would reactivate its standard offload at run end.
         self.offload_hooks = hooks
         self.free_gpu_before_decode()
 
@@ -1371,15 +1358,12 @@ class ImagePipeline:
     def unhooked(self) -> Iterator[None]:
         """Drop the CPU offload hooks for the time of a weight edit.
 
-        Loading a LoRA, Diffusers removes them itself, then restores them with
-        `enable_model_cpu_offload()`, which a modular pipeline lacks: it
-        raises, leaving every component unhooked on CPU. Only the Accelerate
-        hooks are visible to it, hence a crash reserved to a pipeline with a
-        component streamed, whatever put it on CPU.
+        Diffusers' LoRA helpers manage their own offload modes, not our mix of
+        resident and streamed components. Remove that mix before an edit and
+        restore our strategy afterwards, for standard and modular pipelines.
         """
         if (
             self.instance is None
-            or isinstance(self.instance, DiffusionPipeline)
             or self.offload_strategy is None
             or not self.total_memory
         ):
