@@ -139,13 +139,32 @@ pixels over that ratio. Held in latent, which is what the blend between two
 tiles works with.
 """
 
-LATENT_TILE_STEP = 16
-"""Latent cells a tile grows by where the budget holds a larger one."""
+LATENT_TILE_STEP = 8
+"""Latent cells a tile grows by where the budget holds a larger one.
 
-LATENT_TILE_OVERLAP = 4
-"""In quarters of a tile, what two neighbours share and are blended across.
+A rung the budget can't be spent on is a join paid for nothing. Climbed too
+coarsely, the ladder steps from a band well under budget straight onto the
+picture's own height, where it is refused for tiling nothing, and the decode
+settles on the rung below with room to spare on the card. The shorter the band,
+the further into the picture its join falls, and the taller one would have cost
+the card nothing it had.
 
-One quarter, as Diffusers' own figures come to: 192 of stride under 256 of tile.
+Finer is not better by construction, the join not weakening with the band at
+every size. It is better for reaching the sizes the budget already held.
+"""
+
+LATENT_TILE_OVERLAP = 2
+"""The part of a tile two neighbours share and are blended across, inverted.
+
+A half, where Diffusers' own figures come to a quarter. What the join carries
+is decided just inside a tile's trailing edge, where the decode has invented
+the context it could not see and both neighbours are wrong: sharing half a tile
+leaves that edge almost no weight where it lands.
+
+It takes the colour out of the join, not the join. What survives is a step of
+brightness, which no size and no overlap measured here removes, a whole pass
+alone being exact. Widening further is not a direction: past a half the blend
+spans so much of the tile that the join returns, paid for twice over.
 """
 
 
@@ -436,11 +455,13 @@ class ImagePipeline:
             if hasattr(self.instance, "enable_attention_slicing"):
                 self.instance.enable_attention_slicing()
 
-        self.memory_budget = self.measure_memory_budget(memory_info)
+        self.memory_budget = self.measure_memory_budget(
+            memory_info[0] if memory_info else None
+        )
 
         return model
 
-    def measure_memory_budget(self, memory_info: tuple[int, int] | None) -> int | None:
+    def measure_memory_budget(self, free_memory: int | None) -> int | None:
         """Measure the GPU memory a single VAE pass can count on, in bytes.
 
         Only the weights that can't leave the GPU are deducted, which under
@@ -450,17 +471,19 @@ class ImagePipeline:
         definition. It starts from the free memory, never the total: the desktop
         takes its cut first, and a share of the GPU would ignore it.
 
+        What it decides is not how a seam falls but whether there is one: no
+        tiling of this decoder was measured seamless, every size and overlap
+        leaving a step of brightness at the join where the whole pass is exact.
+
         Args:
-            memory_info: GPU memory free and total, in bytes, read with the
-                pipeline still on CPU, or `None` if it couldn't be measured.
+            free_memory: GPU memory free, in bytes, with none of our weights
+                counted as taken, or `None` if it couldn't be measured.
 
         Returns:
             The budget, or `None` if it can't be measured.
         """
-        if memory_info is None or self.instance is None:
+        if free_memory is None or self.instance is None:
             return None
-
-        free_memory = memory_info[0]
 
         def footprint_of(component) -> int:
             get_footprint = getattr(component, "get_memory_footprint", None)
@@ -772,7 +795,7 @@ class ImagePipeline:
             self.residency_reserve = min(self.residency_reserve, offered)
 
         self.stream_denoiser_if_needed(stream_pixels)
-        self.tile_vae_if_needed(pixels)
+        self.tile_vae_if_needed(pixels, width, height)
 
         # Last, so that what it records is the residency just settled on.
         if self.offload_strategy is not None:
@@ -888,7 +911,8 @@ class ImagePipeline:
         evictable by then: the encoders are done conditioning and the denoiser
         has run its last step, so what they hold is room the pass can have for
         the price of a trip. A pass too wide for the whole card is another
-        matter, and tiling bounds it by the tile at the price of faint seams.
+        matter, and tiling bounds it by the band at the price of a join, no cut
+        of this decoder having been measured exact.
 
         This used to answer `True` for every streamed denoiser whatever the
         budget said, tiling a 0.9MP pass beside a budget of 1.7MP. Streaming and
@@ -904,13 +928,14 @@ class ImagePipeline:
 
         return self.decode_bytes(pixels) > self.memory_budget
 
-    def tile_vae_if_needed(self, pixels: int) -> None:
+    def tile_vae_if_needed(self, pixels: int, width: int, height: int) -> None:
         """Tile the VAE work only for the pictures this GPU can't handle in one pass.
 
         The VAE encodes and decodes the picture as a whole, so its peak memory
         grows with the resolution and, past a point, it alone fills the GPU. Tiling
-        bounds that peak but can leave faint seams, so it's a trade only worth
-        making when the picture wouldn't go through otherwise.
+        bounds that peak and leaves a join across the picture, one no size and no
+        overlap was measured to remove, so it's a trade only worth making when the
+        picture wouldn't go through otherwise.
 
         What the pass holds is the decoder's own, read off its stages: they end at
         the resolution of the picture, where the widest of them sets the peak, and
@@ -920,6 +945,8 @@ class ImagePipeline:
 
         Args:
             pixels: Pixels of the picture to generate.
+            width: Width of the picture to generate, in pixels.
+            height: Height of the picture to generate, in pixels.
         """
         vae = getattr(self.instance, "vae", None)
 
@@ -953,22 +980,22 @@ class ImagePipeline:
         if toggle is None:
             return
 
-        sides = self.tile_sides(vae, pixels) if needs_tiling else None
+        sides = self.tile_sides(vae, width, height) if needs_tiling else None
 
         if sides is None:
             toggle()
 
             return
 
-        tile, stride = sides
-        toggle(tile, tile, stride, stride)
+        band, full_width, stride, full_stride = sides
+        toggle(band, full_width, stride, full_stride)
 
-        logger.info(f"Decoding in {tile}px tiles, {stride}px apart.")
+        logger.info(f"Decoding in {band}px bands, {stride}px apart.")
 
     def tile_sides(
-        self, vae: torch.nn.Module, pixels: int
-    ) -> tuple[int, int] | None:
-        """A tile of the picture and the stride between two, in pixels, or `None`.
+        self, vae: torch.nn.Module, width: int, height: int
+    ) -> tuple[int, int, int, int] | None:
+        """A band of the picture and the stride between two, in pixels, or `None`.
 
         Diffusers sizes a tile in pixels, and every family's figures were written
         against a VAE compressing by eight. One compressing twice as hard is
@@ -978,11 +1005,20 @@ class ImagePipeline:
         in latent, multiplied back out, then grown to the largest the budget
         holds.
 
-        Nothing here reaches a margin or a residency: only the seam moves.
+        Cut across the height alone, the band keeping the whole width. A grid
+        joins its neighbours twice over and one of those joins runs down the
+        picture, which on a portrait is down a face; bands leave a single join,
+        lying across, and cost the same memory for the same area decoded at
+        once. No blend was measured exact, so what is chosen here is how much of
+        the picture a join is allowed to cross, never whether there is one.
+
+        Nothing here reaches a margin or a residency: what it settles is where
+        the decode is cut, not what the card is asked for.
 
         Args:
             vae: The VAE whose decode is to be tiled.
-            pixels: Pixels of the picture to generate.
+            width: Width of the picture to generate, in pixels.
+            height: Height of the picture to generate, in pixels.
         """
         ratio = getattr(vae, "spatial_compression_ratio", 0)
         enable = getattr(vae, "enable_tiling", None)
@@ -1002,21 +1038,22 @@ class ImagePipeline:
         budget = self.memory_budget or 0
         side = LATENT_TILE_SIDE
 
-        # A tile past a side of the picture tiles nothing, the budget
-        # answering for the rest whatever the shape.
-        picture_side = int(pixels**0.5)
-
         while True:
             grown = (side + LATENT_TILE_STEP) * ratio
 
-            if grown >= picture_side or self.decode_bytes(grown**2) > budget:
+            # A band as tall as the picture tiles nothing, the budget answering
+            # for the rest. What it costs is its own area, the width being the
+            # picture's whole.
+            if grown >= height or self.decode_bytes(grown * width) > budget:
                 break
 
             side += LATENT_TILE_STEP
 
-        tile = side * ratio
+        band = side * ratio
 
-        return tile, tile - tile // LATENT_TILE_OVERLAP
+        # Across the width, a stride as wide as the picture leaves one column,
+        # so nothing is blended that way and no join runs down the picture.
+        return band, width, band - band // LATENT_TILE_OVERLAP, width
 
     def offload_to_cpu(self, total_memory: int, stream_denoiser: bool = False) -> None:
         """Offload the pipeline weights to CPU, keeping on GPU what fits.
