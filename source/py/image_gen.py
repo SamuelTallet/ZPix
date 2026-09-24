@@ -99,13 +99,11 @@ def generate(
 
     # A reference costs the run only where the denoiser reads it: the pipelines
     # above pour it into the latents it starts from and denoise the picture
-    # alone, while the others append it to the stream at whatever size it came
-    # in at, so the loop then holds it at every step on top of the picture.
-    reference_pixels = (
-        0 if uses_strength else sum(image.width * image.height for image in ref_images)
-    )
+    # alone, while the others append it to the stream, at a size the image
+    # pipeline reads as they encode it.
+    references = 0 if uses_strength else len(ref_images)
 
-    image_pipe.fit_to_resolution(width, height, reference_pixels)
+    image_pipe.fit_to_resolution(width, height, references)
 
     pipe_kwargs = {
         "prompt": prompt,

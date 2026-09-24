@@ -1,6 +1,7 @@
 """Diffusion pipeline wrapper."""
 
 import gc
+import weakref
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from inspect import signature
@@ -24,6 +25,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils.torch_utils import get_device
 from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
+from torch._dynamo.utils import counters
 
 from source.py.anima_flash import install_anima_flash_attn
 from source.py.blocking_task import BlockingTask
@@ -123,6 +125,13 @@ one leaves the arrival short at another. `ENCODER_RANK` frees that room without 
 figure at all.
 """
 
+KEPT_KEYS_ARGUMENT = "kv_cache"
+"""Argument a denoiser keeping keys and values across steps is handed them in.
+
+Named alike by the Diffusers families keeping them. The one returning them
+instead clears them itself once its loop is over.
+"""
+
 PIXELS_PER_MEGAPIXEL = 1e6
 """Pixels in a megapixel, the unit pictures are sized in here.
 
@@ -215,6 +224,56 @@ def tensor_bytes(
         for tensor in tensors
         if device is None or tensor.device == device
     )
+
+
+def compiled_graphs() -> int:
+    """Graphs Dynamo has compiled so far in this process.
+
+    Read before and after a call to tell one that compiled from one that ran
+    kernels it already had: the count doesn't move on a cache hit. The count of
+    frames beside it would say the same, and stays empty under SDNQ's compile.
+    """
+    return counters["stats"]["unique_graphs"]
+
+
+def release_tensors(holder: object, seen: set[int] | None = None) -> None:
+    """Let go of every tensor an object holds, through its attributes and lists.
+
+    For containers a pipeline builds and keeps as a local of its own call, which
+    nothing outside can drop, and whose families lay them out each their own way.
+
+    Args:
+        holder: The object to empty.
+        seen: Identities of the objects already emptied, against cycles.
+    """
+    seen = seen if seen is not None else set()
+
+    if id(holder) in seen or isinstance(holder, torch.nn.Module):
+        return
+
+    seen.add(id(holder))
+
+    if isinstance(holder, list):
+        for index, value in enumerate(holder):
+            if torch.is_tensor(value):
+                holder[index] = None
+            else:
+                release_tensors(value, seen)
+    elif isinstance(holder, dict):
+        for key, value in holder.items():
+            if torch.is_tensor(value):
+                holder[key] = None
+            else:
+                release_tensors(value, seen)
+    elif isinstance(holder, tuple):
+        for value in holder:
+            release_tensors(value, seen)
+    elif hasattr(holder, "__dict__"):
+        for name, value in vars(holder).items():
+            if torch.is_tensor(value):
+                setattr(holder, name, None)
+            else:
+                release_tensors(value, seen)
 
 
 def get_execution_device() -> torch.device:
@@ -318,6 +377,25 @@ class ImagePipeline:
         self.decode_margin = 0
         """GPU memory a VAE pass needs beyond its weights, in bytes; 0 until a
         resolution is known."""
+
+        self.cache_margin = 0
+        """GPU memory the keys and values the denoiser keeps take, in bytes; 0
+        where the pipeline keeps none, or until its references are encoded."""
+
+        self.kept_keys: weakref.WeakSet = weakref.WeakSet()
+        """What the denoiser was handed this run to keep its keys and values in,
+        one per guidance branch. Weak: the pipeline owns them."""
+
+        self.picture: tuple[int, int] = (0, 0)
+        """Width and height of the picture the coming run makes, in pixels."""
+
+        self.references_to_encode = 0
+        """References the coming run has yet to hand its VAE; the seat waits
+        for the last."""
+
+        self.reference_pixels = 0
+        """Pixels of the references encoded so far this run, at their encoded
+        size."""
 
         self.offload_strategy: DenoiserFirstOffloadStrategy | None = None
         """Strategy evicting the components, `None` when none is in play."""
@@ -424,9 +502,21 @@ class ImagePipeline:
         self.streamed_reasons = {}
         self.run_margin = 0
         self.decode_margin = 0
+        self.cache_margin = 0
+        self.kept_keys = weakref.WeakSet()
+        self.picture = (0, 0)
+        self.references_to_encode = 0
+        self.reference_pixels = 0
 
         self.log_gpu_state()
         self.read_run_memory()
+
+        # Inner first: the tiling an encode is given has to be the last thing
+        # settled before it runs, after the fit the count may trigger.
+        self.tile_encodes_on_their_size()
+        self.count_references_when_encoded()
+        self.watch_kept_keys()
+        self.collect_after_compiling()
 
         # No resolution is in hand here, so the smallest picture stands in. The
         # residency it settles is provisional, the fit before each generation
@@ -668,6 +758,73 @@ class ImagePipeline:
 
         return self.run_memory.decode_bytes(pixels)
 
+    def cache_bytes(self, pixels: int) -> int:
+        """What the keys and values the denoiser keeps of these pixels take, in bytes.
+
+        A pipeline keeping them computes the references once, on the first step,
+        and reads them back after. That pass is counted with the run; the cache
+        it leaves is not. Every attention layer keeps its own, and they stay on
+        the card to the last step: `release_kept_keys` hands them back before the
+        decode, which would otherwise find them in its way.
+
+        The prompt's tokens are kept too and go uncounted, being known only once
+        encoded, and far fewer than a reference's.
+
+        Args:
+            pixels: Pixels of the references. The picture is never kept.
+        """
+        if not pixels or not self.keeps_keys():
+            return 0
+
+        if self.run_memory is None:
+            return self.total_memory
+
+        return self.run_memory.cache_bytes(pixels)
+
+    def keeps_keys(self) -> bool:
+        """Does the pipeline keep the keys and values of what precedes the picture?
+
+        Asked of the pipeline, not the denoiser: an architecture able to keep them
+        doesn't say the loop driving it does. Read at the argument's default,
+        which nothing here overrides.
+        """
+        return self.call_default("use_kv_cache") is True
+
+    def call_default(self, name: str) -> object:
+        """What the pipeline takes for a call argument left out, `None` without one.
+
+        Args:
+            name: Name of the argument.
+        """
+        if self.instance is None:
+            return None
+
+        blocks = getattr(self.instance, "blocks", None)
+
+        if blocks is not None:
+            return next(
+                (param.default for param in blocks.inputs if param.name == name),
+                None,
+            )
+
+        parameter = signature(type(self.instance).__call__).parameters.get(name)
+
+        if parameter is None or parameter.default is parameter.empty:
+            return None
+
+        return parameter.default
+
+    def encode_bytes(self, pixels: int) -> int:
+        """What encoding this picture asks beyond the weights, in bytes.
+
+        Args:
+            pixels: Pixels of the picture to encode.
+        """
+        if self.run_memory is None:
+            return self.total_memory
+
+        return self.run_memory.encode_bytes(pixels)
+
     def watch_run(self, stream_pixels: int) -> None:
         """Note what the coming generation is to be read against.
 
@@ -711,52 +868,75 @@ class ImagePipeline:
             else "Compilation wrote nothing: these kernels were previously cached."
         )
 
-    def fit_to_resolution(
-        self, width: int, height: int, reference_pixels: int = 0
-    ) -> None:
+    def fit_to_resolution(self, width: int, height: int, references: int = 0) -> None:
         """Set the pipeline up for the size of the picture about to be made.
+
+        Settles what the phases before the loop need. The loop's own arrangement
+        waits for the references, if any, to be encoded.
 
         Args:
             width: Width of the picture to generate, in pixels.
             height: Height of the picture to generate, in pixels.
-            reference_pixels: Pixels of the references the denoiser reads beside
-                the picture, none of them where a family conditions otherwise.
+            references: Reference images the denoiser reads beside the picture,
+                none of them where a family conditions otherwise.
         """
-        # Blocks kept from the generation before are sized for another picture,
-        # and until handed back they read as taken by the measures below.
-        clear_device_cache(garbage_collection=True)
-
-        pixels = width * height
-
-        # A reference joins the picture in one stream, at its own size, and every
-        # step carries both. The decode stays the picture's, never reaching them.
-        stream_pixels = pixels + reference_pixels
-
-        # The figures below are the stream's, so say what the stream is made of.
-        if reference_pixels:
-            logger.info(
-                f"Denoising {stream_pixels / PIXELS_PER_MEGAPIXEL:.1f}MP: the "
-                f"{pixels / PIXELS_PER_MEGAPIXEL:.1f}MP output and "
-                f"{reference_pixels / PIXELS_PER_MEGAPIXEL:.1f}MP of reference."
-            )
-
         # All the generation before still owes, nothing being measured off it.
         if self.warmed_up_run:
             self.log_compiled_kernels()
             self.warmed_up_run = False
 
+        # A reference joins the stream at a size the pipeline chooses and says
+        # nowhere beforehand, so each is counted as it is encoded.
+        self.picture = (width, height)
+        self.references_to_encode = references
+        self.reference_pixels = 0
+        self.kept_keys.clear()
+
+        self.fit_stream()
+
+    def fit_stream(self) -> None:
+        """Arbitrate the GPU for the stream the denoiser is known to read so far.
+
+        Runs before the call on the picture alone, then again once the last
+        reference is encoded. The seat waits for that second pass: settled twice,
+        every hook attached in between would send its component back to the CPU.
+        """
+        width, height = self.picture
+
+        # Blocks kept by what ran before are sized for something else, and until
+        # handed back they read as taken by the measures below.
+        clear_device_cache(garbage_collection=True)
+
+        pixels = width * height
+        waits_for_references = self.references_to_encode > 0
+
+        # A reference joins the picture in one stream, and every step carries
+        # both. The decode stays the picture's, never reaching them.
+        stream_pixels = pixels + self.reference_pixels
+
+        # The figures below are the stream's, so say what the stream is made of.
+        if self.reference_pixels:
+            logger.info(
+                f"Denoising {stream_pixels / PIXELS_PER_MEGAPIXEL:.1f}MP: the "
+                f"{pixels / PIXELS_PER_MEGAPIXEL:.1f}MP output and "
+                f"{self.reference_pixels / PIXELS_PER_MEGAPIXEL:.1f}MP of reference."
+            )
+
         # Compiled per shape, so a size never generated is a size still to
         # compile. Settled before the seat below, which is weighed on it.
         self.warms_up_next_run = stream_pixels not in self.warmed_up_streams
 
-        # What the run wants beyond the weights, and all that the denoiser's seat
-        # is weighed against.
+        # What the run wants beyond the weights, and what the pipeline keeps from
+        # it: all that the denoiser's seat is weighed against.
         self.run_margin = self.run_bytes(stream_pixels)
+        self.cache_margin = self.cache_bytes(self.reference_pixels)
 
         # What every arrival leaves free behind it: the loop's margin alone. Read
         # on the decode's instead, the shortest phase set the room every other
         # one has to leave, and the strategy emptied the GPU on each arrival.
-        self.memory_reserve = self.run_margin
+        # The cache is the loop's too, and the loop's alone.
+        loop = self.run_margin + self.cache_margin
+        self.memory_reserve = loop
 
         # Who may sit beside the denoiser is another question, and the widest
         # phase answers it: an encoder resident through a decode that wants the
@@ -771,9 +951,7 @@ class ImagePipeline:
         # pass here; `decode_margin` frees the selected band's room on demand,
         # after the denoiser has finished.
         self.residency_reserve = (
-            self.run_margin
-            if self.tiles_decode(pixels)
-            else max(self.run_margin, self.decode_bytes(pixels))
+            loop if self.tiles_decode(pixels) else max(loop, self.decode_bytes(pixels))
         )
 
         # A reserve larger than the GPU is not an instruction anything can carry
@@ -785,11 +963,15 @@ class ImagePipeline:
             self.memory_reserve = min(self.memory_reserve, offered)
             self.residency_reserve = min(self.residency_reserve, offered)
 
-        self.stream_denoiser_if_needed(stream_pixels)
-        self.tile_vae_if_needed(pixels, width, height)
+        if not waits_for_references:
+            self.stream_denoiser_if_needed(stream_pixels)
 
-        # Last, so that what it records is the residency just settled on.
-        if self.offload_strategy is not None:
+        self.tile_vae_if_needed(pixels, width, height, final=not waits_for_references)
+
+        # Last, so that what it records is the residency just settled on. With
+        # references, it runs after the encoders, whose compilation then goes
+        # unreported rather than walk both caches before every edit.
+        if self.offload_strategy is not None and not waits_for_references:
             self.watch_run(stream_pixels)
 
     def stream_denoiser_if_needed(self, pixels: int) -> None:
@@ -849,7 +1031,8 @@ class ImagePipeline:
                 f"{pixels / PIXELS_PER_MEGAPIXEL:.1f}MP needs "
                 f"{needed / 1024**3:.1f}GB, "
                 f"{'compiling ' if self.warms_up_next_run else ''}"
-                f"{'adapted ' if self.adapter_footprint() else ''}run included, "
+                f"{'adapted ' if self.adapter_footprint() else ''}run "
+                f"{'and cache ' if self.cache_margin else ''}included, "
                 f"GPU offers {available / 1024**3:.1f}GB "
                 f"less {RESERVED_MEMORY / 1024**3:.1f}GB "
                 f"reserved, so we {'stream' if streams else 'seat'} the denoiser."
@@ -887,13 +1070,17 @@ class ImagePipeline:
         are still to compile, and doubled again where an adapter wraps the
         layers. `WARMING_UP_RUN` and `ADAPTED_RUN` say what each is measured on.
 
+        The cache is added after both: compiling doesn't grow it, and an adapter
+        leaves the width of a key or a value as it was.
+
         Charged to the seat alone: the reserve every arrival leaves behind
         answers another question, and one nothing can reach empties the GPU on
         each of them.
         """
         run = self.run_margin * (WARMING_UP_RUN if self.warms_up_next_run else 1)
+        run = run * ADAPTED_RUN if self.adapter_footprint() else run
 
-        return run * ADAPTED_RUN if self.adapter_footprint() else run
+        return run + self.cache_margin
 
     def tiles_decode(self, pixels: int) -> bool:
         """Will this picture be decoded in tiles rather than whole?
@@ -919,7 +1106,9 @@ class ImagePipeline:
 
         return self.decode_bytes(pixels) > self.memory_budget
 
-    def tile_vae_if_needed(self, pixels: int, width: int, height: int) -> None:
+    def tile_vae_if_needed(
+        self, pixels: int, width: int, height: int, final: bool = True
+    ) -> None:
         """Tile the VAE work only for the pictures this GPU can't handle in one pass.
 
         The VAE encodes and decodes the picture as a whole, so its peak memory
@@ -938,6 +1127,8 @@ class ImagePipeline:
             pixels: Pixels of the picture to generate.
             width: Width of the picture to generate, in pixels.
             height: Height of the picture to generate, in pixels.
+            final: Is this the arrangement the decode runs on? One settled
+                before the references are encoded is applied but not logged.
         """
         vae = getattr(self.instance, "vae", None)
 
@@ -945,7 +1136,13 @@ class ImagePipeline:
             return
 
         needs_tiling = self.tiles_decode(pixels)
-        sides = self.tile_sides(vae, width, height) if needs_tiling else None
+        sides = (
+            self.tile_sides(
+                vae, width, height, self.decode_bytes, self.memory_budget or 0
+            )
+            if needs_tiling
+            else None
+        )
 
         # A grown band can ask for much more than the denoising loop. Free room
         # for that actual band, including the headroom withheld from its budget.
@@ -962,6 +1159,7 @@ class ImagePipeline:
         if self.offload_strategy is not None:
             self.offload_strategy.memory_reserve_margin = self.memory_reserve
 
+        if self.offload_strategy is not None and final:
             logger.info(
                 f"Decoding {pixels / PIXELS_PER_MEGAPIXEL:.1f}MP "
                 f"{'tiled' if needs_tiling else 'in one pass'}, "
@@ -983,10 +1181,31 @@ class ImagePipeline:
         band, full_width, stride, full_stride = sides
         toggle(band, full_width, stride, full_stride)
 
+        if not final:
+            return
+
         logger.info(f"Decoding in {band}px bands, {stride}px apart.")
 
+        # The ladder only climbs what the budget holds, so a band over budget is
+        # the narrowest one, with nowhere lower to go. Said, as a slow decode
+        # shows up nowhere else.
+        asked = self.decode_bytes(band * width)
+        budget = self.memory_budget
+
+        if budget is not None and asked > budget:
+            logger.warning(
+                f"A {band}px band asks {asked / 1024**3:.1f}GB of the "
+                f"{budget / 1024**3:.1f}GB left to the decode: it may spill into "
+                f"host memory."
+            )
+
     def tile_sides(
-        self, vae: torch.nn.Module, width: int, height: int
+        self,
+        vae: torch.nn.Module,
+        width: int,
+        height: int,
+        cost: Callable[[int], int],
+        budget: int,
     ) -> tuple[int, int, int, int] | None:
         """A band of the picture and the stride between two, in pixels, or `None`.
 
@@ -1008,9 +1227,11 @@ class ImagePipeline:
         The caller also uses this area to free enough room before decoding.
 
         Args:
-            vae: The VAE whose decode is to be tiled.
-            width: Width of the picture to generate, in pixels.
-            height: Height of the picture to generate, in pixels.
+            vae: The VAE whose pass is to be tiled.
+            width: Width of the picture the pass reads or writes, in pixels.
+            height: Height of that picture, in pixels.
+            cost: What the pass asks for a given number of pixels, in bytes.
+            budget: GPU memory the pass can count on, in bytes.
         """
         ratio = getattr(vae, "spatial_compression_ratio", 0)
         enable = getattr(vae, "enable_tiling", None)
@@ -1027,7 +1248,6 @@ class ImagePipeline:
         if not sized:
             return None
 
-        budget = self.memory_budget or 0
         side = LATENT_TILE_SIDE
 
         while True:
@@ -1036,7 +1256,7 @@ class ImagePipeline:
             # A band as tall as the picture tiles nothing, the budget answering
             # for the rest. What it costs is its own area, the width being the
             # picture's whole.
-            if grown >= height or self.decode_bytes(grown * width) > budget:
+            if grown >= height or cost(grown * width) > budget:
                 break
 
             side += LATENT_TILE_STEP
@@ -1127,11 +1347,20 @@ class ImagePipeline:
             if footprint is None:
                 stream(name, component, "can't be sized", chosen=False)
             elif footprint() + memory_reserve > total_memory:
+                # Only a component too large on its own is the GPU's limit: the
+                # others are sent off by the room the run needs beside them.
+                alone = footprint() > total_memory
+                reason = (
+                    "is too large for this GPU"
+                    if alone
+                    else f"doesn't fit beside the {memory_reserve / 1024**3:.1f}GB "
+                    "this run needs"
+                )
                 stream(
                     name,
                     component,
-                    f"its {footprint() / 1024**3:.1f}GB is too large for this GPU",
-                    chosen=False,
+                    f"its {footprint() / 1024**3:.1f}GB {reason}",
+                    chosen=not alone,
                 )
             elif stream_denoiser and eviction_rank(name) >= DENOISER_RANK:
                 stream(name, component, "this resolution wants the whole GPU")
@@ -1162,6 +1391,12 @@ class ImagePipeline:
         # Using Diffusers' _all_hooks would reactivate its standard offload at run end.
         self.offload_hooks = hooks
         self.free_gpu_before_decode()
+
+        # Attaching or streaming a component hands its weights' blocks to the
+        # allocator, not the driver, and an arrival with no sibling reclaims
+        # nothing. Unreclaimed, the loop allocates around blocks shaped for
+        # weights, and the driver pages the card for room the allocator holds.
+        clear_device_cache(garbage_collection=True)
 
     def stream_least_called_until_resident(
         self,
@@ -1293,6 +1528,18 @@ class ImagePipeline:
             # will also need room after the siblings have been evicted.
             margin += tensor_bytes(vae) - tensor_bytes(vae, device=device)
 
+            # A reference still waiting here never reached the VAE, so the loop
+            # ran on the picture's arrangement alone.
+            if self.references_to_encode:
+                logger.warning(
+                    f"{self.references_to_encode} reference(s) never reached the "
+                    "VAE: the denoiser ran on a stream counted without them."
+                )
+                self.references_to_encode = 0
+
+            # The loop is over, and what it kept is read by no step after it.
+            self.release_kept_keys()
+
             # Cached activation blocks read as used until handed back: reclaim
             # before measuring, or the figure is stale.
             clear_device_cache(garbage_collection=True)
@@ -1326,6 +1573,233 @@ class ImagePipeline:
 
         setattr(decode_with_room, "frees_gpu", True)  # noqa: B010
         vae.decode = decode_with_room
+
+    def count_references_when_encoded(self) -> None:
+        """Count each reference as the pipeline encodes it, then fit the stream.
+
+        A pipeline hands each reference to its VAE, resized, after its encoders
+        and before its first step: the first moment the size is known, and the
+        last one the seat can still be settled.
+
+        A strength-based pipeline's source image crosses it uncounted, being
+        denoised in place of the picture rather than beside it.
+        """
+        vae = getattr(self.instance, "vae", None)
+
+        if vae is None or getattr(vae.encode, "counts_references", False):
+            return
+
+        encode = vae.encode
+
+        def encode_counting_references(*args, **kwargs):
+            images = args[0] if args else kwargs.get("x")
+
+            if self.references_to_encode and torch.is_tensor(images):
+                # One call can hand over a batch of them, along its first axis.
+                count = images.shape[0]
+
+                self.reference_pixels += count * images.shape[-2] * images.shape[-1]
+                self.references_to_encode = max(self.references_to_encode - count, 0)
+
+                if not self.references_to_encode:
+                    self.fit_stream()
+
+            return encode(*args, **kwargs)
+
+        setattr(encode_counting_references, "counts_references", True)  # noqa: B010
+        vae.encode = encode_counting_references
+
+    def tile_encodes_on_their_size(self) -> None:
+        """Tile each encode on the picture it is handed, never on the one to make.
+
+        Diffusers keeps one tiling per VAE for its encodes and decodes alike, and
+        the decode's is cut to the picture to make: bands as wide as it is. A
+        reference comes in at a size of its own, and one wider than the picture
+        was cut into a band and the sliver left over, encoded alone with nothing
+        to blend it against. The denoiser copies what it reads, so the edit came
+        out with a strip down its edge.
+
+        Each encode is then weighed on its own picture and its own encoder, and
+        the decode's arrangement put back once it is done.
+        """
+        vae = getattr(self.instance, "vae", None)
+
+        if vae is None or getattr(vae.encode, "tiles_on_its_size", False):
+            return
+
+        encode = vae.encode
+
+        def encode_on_its_size(*args, **kwargs):
+            images = args[0] if args else kwargs.get("x")
+
+            if not torch.is_tensor(images):
+                return encode(*args, **kwargs)
+
+            # Whatever a family names its figures, Diffusers prefixes them alike.
+            decode_tiling = {
+                name: value
+                for name, value in vars(vae).items()
+                if name == "use_tiling" or name.startswith("tile_")
+            }
+
+            self.tile_encode(vae, images.shape[-1], images.shape[-2])
+
+            try:
+                return encode(*args, **kwargs)
+            finally:
+                for name, value in decode_tiling.items():
+                    setattr(vae, name, value)
+
+        setattr(encode_on_its_size, "tiles_on_its_size", True)  # noqa: B010
+        vae.encode = encode_on_its_size
+
+    def tile_encode(self, vae: torch.nn.Module, width: int, height: int) -> None:
+        """Tile an encode of this picture only where it can't go through whole.
+
+        A join in a reference is one the denoiser reads and reproduces, so the
+        whole pass is worth more here than anywhere: it is refused only for want
+        of room, against the encoder's own cost, which can be a third of what the
+        decoder holds over the same picture.
+
+        Args:
+            vae: The VAE about to encode.
+            width: Width of the picture to encode, in pixels.
+            height: Height of the picture to encode, in pixels.
+        """
+        pixels = width * height
+        budget = self.encode_budget(vae)
+        asked = self.encode_bytes(pixels)
+        needs_tiling = budget is None or asked > budget
+
+        toggle = getattr(
+            vae, "enable_tiling" if needs_tiling else "disable_tiling", None
+        )
+
+        if toggle is None:
+            return
+
+        sides = (
+            self.tile_sides(vae, width, height, self.encode_bytes, budget or 0)
+            if needs_tiling
+            else None
+        )
+
+        if sides is None:
+            toggle()
+        else:
+            toggle(*sides)
+
+        if sides is not None:
+            how = f"in {sides[0]}px bands"
+        else:
+            how = "tiled" if needs_tiling else "in one pass"
+
+        logger.info(
+            f"Encoding {pixels / PIXELS_PER_MEGAPIXEL:.1f}MP {how}, "
+            f"asking {asked / 1024**3:.1f}GB"
+            + (f" of {budget / 1024**3:.1f}GB." if budget is not None else ".")
+        )
+
+    def encode_budget(self, vae: torch.nn.Module) -> int | None:
+        """GPU memory an encode can count on now, in bytes, or `None` if unknown.
+
+        Read on the spot rather than taken from the budget read at load: an encode
+        runs between the encoders and the loop, beside whatever the arbitration
+        seated, and nothing is evicted for it. On a GPU without offload the load's
+        figure stands, every component staying where it is.
+
+        Args:
+            vae: The VAE about to encode.
+        """
+        if self.offload_strategy is None:
+            return self.memory_budget
+
+        clear_device_cache(garbage_collection=True)
+        memory_info = get_memory_info()
+
+        if memory_info is None:
+            return None
+
+        # The encode's own hook brings in whatever of the weights is still away.
+        absent = tensor_bytes(vae) - tensor_bytes(vae, device=get_execution_device())
+
+        return max(memory_info[0] - absent - RESERVED_MEMORY, 0)
+
+    def watch_kept_keys(self) -> None:
+        """Note what the denoiser is handed to keep its keys and values in.
+
+        Held weakly: the pipeline owns it, and a run that never reaches its
+        decode must not leave it on the card.
+        """
+        denoiser = self.denoiser()
+
+        if denoiser is None:
+            return
+
+        def note(module, args, kwargs):
+            kept = kwargs.get(KEPT_KEYS_ARGUMENT)
+
+            if kept is None:
+                return
+
+            try:
+                self.kept_keys.add(kept)
+            except TypeError:
+                logger.warning(
+                    f"Can't watch the {type(kept).__name__} the denoiser keeps its "
+                    "keys in: the decode will find it in its way."
+                )
+
+        denoiser.register_forward_pre_hook(note, with_kwargs=True)
+
+    def release_kept_keys(self) -> None:
+        """Hand back the keys and values the denoiser kept, its loop being over.
+
+        The pipeline holds them as a local of its call until the call returns, so
+        they sit through the decode, which on a small card they leave short of the
+        band it was sized for. Emptied in place: the container is the one thing
+        nothing outside the call can drop.
+
+        Called by the decode, which every pipeline here runs once, after its last
+        step. A pipeline reading them after that would raise rather than go on
+        without them.
+        """
+        for kept in list(self.kept_keys):
+            release_tensors(kept)
+
+        self.kept_keys.clear()
+
+    def collect_after_compiling(self) -> None:
+        """Hand back what compiling a call left behind, as soon as the call ends.
+
+        Tracing a new shape leaves the tensors of the traced call in reference
+        cycles, which only a collection reaches, and Python runs one when it sees
+        fit. Meanwhile they stay on the card: the two steps compiling a Qwen-Image
+        2.1 edit were watched to leave 2.3GB there, and a streamed loop spilling
+        on them into host memory took 27 seconds a step where it took 2.3 with
+        them collected.
+
+        Only after a call that compiled, which Dynamo counts: a settled run leaves
+        nothing to collect, and pays nothing to be asked.
+        """
+        if self.instance is None:
+            return
+
+        for component in self.instance.components.values():
+            if not isinstance(component, torch.nn.Module):
+                continue
+
+            compiled_before = [0]
+
+            def note(module, args, compiled_before=compiled_before):
+                compiled_before[0] = compiled_graphs()
+
+            def collect(module, args, output, compiled_before=compiled_before):
+                if compiled_graphs() > compiled_before[0]:
+                    clear_device_cache(garbage_collection=True)
+
+            component.register_forward_pre_hook(note)
+            component.register_forward_hook(collect)
 
     def remove_hooks(self) -> None:
         """Break the reference cycles left by CPU offload."""

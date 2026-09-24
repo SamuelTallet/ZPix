@@ -3,8 +3,11 @@
 import weakref
 from dataclasses import dataclass
 from itertools import chain
+from math import isqrt
 
 import torch
+from diffusers.models.attention import AttentionModuleMixin
+from diffusers.models.attention_processor import Attention
 from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils.weak import WeakTensorKeyDictionary
 
@@ -336,6 +339,47 @@ def bytes_per_token(denoiser: torch.nn.Module) -> int:
     return widest + stream * stream_size
 
 
+def cached_width(attention: torch.nn.Module) -> int:
+    """Width a token's key and value take together in one attention layer.
+
+    Read off the key and value projections, which also shows a family grouping its
+    heads. A family fusing them falls back on the widths Diffusers gives every
+    attention layer. Zero where a layer says neither.
+
+    Args:
+        attention: An attention layer of the denoiser.
+    """
+    key = getattr(attention, "to_k", None)
+    value = getattr(attention, "to_v", None)
+
+    if isinstance(key, torch.nn.Module) and isinstance(value, torch.nn.Module):
+        return written_width(key) + written_width(value)
+
+    for attribute in ("inner_kv_dim", "inner_dim"):
+        width = getattr(attention, attribute, None)
+
+        if isinstance(width, int):
+            return 2 * width
+
+    return 0
+
+
+def cached_bytes_per_token(denoiser: torch.nn.Module) -> int:
+    """What one token costs a denoiser keeping its keys and values, in bytes.
+
+    Unlike what a block writes, kept keys and values outlive their block, so depth
+    sums into this. Kept at the stream's dtype, whatever the weights were
+    quantized to.
+    """
+    stream_size = stream_dtype_size(denoiser)
+
+    return sum(
+        cached_width(module) * stream_size
+        for module in denoiser.modules()
+        if isinstance(module, (Attention, AttentionModuleMixin))
+    )
+
+
 def latent_channels(vae: torch.nn.Module) -> int:
     """Channels the latent handed to a VAE carries."""
     config = getattr(vae, "config", None)
@@ -488,6 +532,52 @@ class LiveTensors(TorchDispatchMode):
         return widest
 
 
+def walk_pass(
+    copy: torch.nn.Module, name: str, channels: int, side: int
+) -> tuple[int, object] | None:
+    """Walk one pass of a VAE's meta copy over a square probe.
+
+    Args:
+        copy: The VAE, rebuilt on the meta device.
+        name: The method making the pass, `encode` or `decode`.
+        channels: Channels the probe carries.
+        side: Side of the probe, in the pixels the pass reads.
+
+    Returns:
+        The most elements the pass held at once and what it gave back, or `None`
+        where the pass can't be walked.
+    """
+    run = getattr(copy, name, None)
+
+    if not callable(run) or not channels:
+        return None
+
+    walk = LiveTensors(
+        {id(tensor) for tensor in chain(copy.parameters(), copy.buffers())}
+    )
+
+    # A family carrying a time axis reads one axis more than a picture has. Asked
+    # rather than guessed: tried, a wrong count raises like a pass that can't be
+    # walked at all, and the two are only told apart by reading the reason.
+    axes = convolved_axes(copy)
+    shape = (1, channels) + (1,) * (axes - 2) + (side,) * 2
+
+    try:
+        with torch.no_grad(), walk:
+            given = run(torch.zeros(shape, device="meta"))
+    except (RuntimeError, TypeError, ValueError, NotImplementedError) as e:
+        logger.warning(f"Can't walk {name} of {type(copy).__name__} to size it: {e}")
+
+        return None
+
+    if not walk.lives:
+        logger.warning(f"{name} of {type(copy).__name__} gave back nothing to size.")
+
+        return None
+
+    return walk.peak(), given
+
+
 def walk_decode(vae: torch.nn.Module) -> tuple[int, int] | None:
     """Walk a decode of a known latent and read what it holds at its widest.
 
@@ -508,36 +598,15 @@ def walk_decode(vae: torch.nn.Module) -> tuple[int, int] | None:
     if copy is None:
         return None
 
-    channels = latent_channels(copy)
+    walked = walk_pass(copy, "decode", latent_channels(copy), LATENT_PROBE_SIDE)
 
-    if not channels:
+    if walked is None:
         return None
 
-    walk = LiveTensors(
-        {id(tensor) for tensor in chain(copy.parameters(), copy.buffers())}
-    )
-
-    # A family carrying a time axis reads one axis more than a picture has. Asked
-    # rather than guessed: tried, a wrong count raises like a decoder that can't be
-    # walked at all, and the two are only told apart by reading the reason.
-    axes = convolved_axes(copy)
-    shape = (1, channels) + (1,) * (axes - 2) + (LATENT_PROBE_SIDE,) * 2
-    decode = getattr(copy, "decode", None)
-
-    if not callable(decode):
-        return None
-
-    try:
-        with torch.no_grad(), walk:
-            picture = decode(torch.zeros(shape, device="meta"))
-    except (RuntimeError, TypeError, ValueError, NotImplementedError) as e:
-        logger.warning(f"Can't walk a decode of {type(vae).__name__} to size it: {e}")
-
-        return None
-
+    peak, picture = walked
     picture = getattr(picture, "sample", picture)
 
-    if not torch.is_tensor(picture) or not walk.lives:
+    if not torch.is_tensor(picture):
         logger.warning(f"A decode of {type(vae).__name__} gave back nothing to size.")
 
         return None
@@ -547,9 +616,60 @@ def walk_decode(vae: torch.nn.Module) -> tuple[int, int] | None:
     # The dtype is the loaded model's, never the copy's: rebuilding from a
     # configuration says nothing of what the weights were cast to.
     return (
-        round(walk.peak() * stream_dtype_size(vae) / pixels),
+        round(peak * stream_dtype_size(vae) / pixels),
         round(pixels / LATENT_PROBE_SIDE**2),
     )
+
+
+def picture_channels(vae: torch.nn.Module) -> int:
+    """Channels the picture handed to a VAE's encoder carries."""
+    channels = getattr(getattr(vae, "config", None), "in_channels", None)
+
+    if isinstance(channels, int):
+        return channels
+
+    encoder = getattr(vae, "encoder", None)
+    first = next(
+        (
+            child
+            for _, child in (encoder or vae).named_modules()
+            if written_width(child) and not list(child.children())
+        ),
+        None,
+    )
+
+    return getattr(first, "in_channels", 0) or 0
+
+
+def walk_encode(vae: torch.nn.Module, compression: int) -> int | None:
+    """Walk an encode of a known picture and read what it holds, per pixel.
+
+    Walked apart from the decode rather than read off it: the two halves of a VAE
+    are built to different widths, and an encoder can hold a third of what its
+    decoder does over the same picture. Sized on the decode, a reference that
+    goes through whole gets cut instead, and the denoiser reads the join.
+
+    Args:
+        vae: The VAE to walk.
+        compression: Pixels one latent pixel decodes to.
+
+    Returns:
+        Bytes one pixel of the picture costs an encode, or `None` where the encode
+        can't be walked.
+    """
+    copy = meta_copy(vae)
+
+    if copy is None:
+        return None
+
+    # A probe the encoder reduces to the latent the decode was walked on.
+    side = LATENT_PROBE_SIDE * max(isqrt(compression), 1)
+    walked = walk_pass(copy, "encode", picture_channels(copy), side)
+
+    if walked is None:
+        return None
+
+    return round(walked[0] * stream_dtype_size(vae) / side**2)
 
 
 def convolved_axes(vae: torch.nn.Module) -> int:
@@ -642,8 +762,15 @@ class RunMemory:
     denoiser_bytes_per_token: int
     """What one token costs the denoiser at its widest block, in bytes."""
 
+    cached_bytes_per_token: int
+    """What one token costs across the depth once its keys and values are kept,
+    in bytes."""
+
     decode_bytes_per_pixel: int
     """What one pixel of the picture costs a VAE pass, in bytes."""
+
+    encode_bytes_per_pixel: int
+    """What one pixel of a picture costs the VAE encoding it, in bytes."""
 
     read_pixels_per_token: int
     """Pixels one token holds, as the configurations gave it away at load."""
@@ -664,9 +791,17 @@ class RunMemory:
         """
         return self.tokens(pixels) * self.denoiser_bytes_per_token
 
+    def cache_bytes(self, pixels: int) -> int:
+        """What keeping the keys and values of this many pixels asks, in bytes."""
+        return self.tokens(pixels) * self.cached_bytes_per_token
+
     def decode_bytes(self, pixels: int) -> int:
         """What decoding this many pixels asks beyond the weights, in bytes."""
         return pixels * self.decode_bytes_per_pixel
+
+    def encode_bytes(self, pixels: int) -> int:
+        """What encoding this many pixels asks beyond the weights, in bytes."""
+        return pixels * self.encode_bytes_per_pixel
 
 
 def read_architecture(
@@ -700,9 +835,15 @@ def read_architecture(
         return None
 
     decode_bytes_per_pixel, compression = walked
+
+    # An encoder that can't be walked is sized as its decoder, which holds more.
+    encode_bytes_per_pixel = walk_encode(vae, compression) or decode_bytes_per_pixel
+
     reading = RunMemory(
         denoiser_bytes_per_token=bytes_per_token(denoiser),
+        cached_bytes_per_token=cached_bytes_per_token(denoiser),
         decode_bytes_per_pixel=decode_bytes_per_pixel,
+        encode_bytes_per_pixel=encode_bytes_per_pixel,
         read_pixels_per_token=structural_pixels_per_token(
             denoiser, compression, latent_channels(vae)
         ),
