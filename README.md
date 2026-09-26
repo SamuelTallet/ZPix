@@ -8,17 +8,17 @@ Hotswap LoRAs. Drag reference images directly from output gallery, which is alwa
 ## Quick start
 
 Windows:
-1. Download and extract [ZPix_1.0.8_Windows.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix_1.0.8_Windows.zip)
+1. Download and extract [ZPix_1.0.9_Windows.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.9/ZPix_1.0.9_Windows.zip)
 2. Run `ZPix.exe`
     - If SmartScreen pops, click on "More info", "Run anyway"
     - If a DLL is missing, install [Visual C++ Redist](https://aka.ms/vc14/vc_redist.x64.exe) and re-run
 
 Debian/Ubuntu:
-1. Download and install [zpix_1.0.8-1_all.deb](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/zpix_1.0.8-1_all.deb)
+1. Download and install [zpix_1.0.9-1_all.deb](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.9/zpix_1.0.9-1_all.deb)
 2. Run ZPix from app launcher
 
 macOS:
-1. Download and open [ZPix_1.0.8_AppleSilicon.dmg](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.8/ZPix_1.0.8_AppleSilicon.dmg)
+1. Download and open [ZPix_1.0.9_AppleSilicon.dmg](https://github.com/SamuelTallet/ZPix/releases/download/v1.0.9/ZPix_1.0.9_AppleSilicon.dmg)
 2. Drag ZPix to Applications
 3. Run ZPix from Applications
     - If the app doesn't launch, go to system "Settings" > "Privacy & Security", click on "Open Anyway"
@@ -44,9 +44,15 @@ Once automatic setup is done:
 
 ZPix sets up the Python environment and packages for you.
 
-### Five models
+### Seven models
 
-Z-Image Turbo, FLUX.2 [klein] 4B, Anima "Turbo", Anima Base, and Krea 2 Turbo.
+- Z-Image Turbo
+- FLUX.2 [klein] 4B
+- Anima Turbo
+- Anima Base
+- Krea 2 Turbo
+- Pruna Qwen-Image 2.1
+- Qwen-Image 2.1
 
 ### Lazy download
 
@@ -106,6 +112,7 @@ Base models:
 - [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) by Black Forest Labs
 - [Anima](https://huggingface.co/circlestone-labs/Anima) by CircleStone Labs, built on [NVIDIA Cosmos](https://github.com/nvidia-cosmos)
 - [Krea-2-Turbo](https://huggingface.co/krea/Krea-2-Turbo) by Krea
+- [Qwen-Image-2.1](https://huggingface.co/Qwen/Qwen-Image-2.1) by Alibaba
 
 Python packages:
 - [Torch](https://pytorch.org/)
@@ -132,7 +139,7 @@ Icons:
 
 ## Thanks
 
-Thanks to M1000, Kellzea, JDD, Design8400, TGS and Nomis for beta testing this program.
+Thanks to M1000, Kellzea, JDD, Design8400, Jskup, TGS and Nomis for beta testing this program.
 
 ## License
 
