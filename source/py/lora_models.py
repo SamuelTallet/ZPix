@@ -4,8 +4,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import gradio as gr
+import torch
 from crossfiledialog import open_file
 from diffusers.loaders.lora_base import LoraBaseMixin
+from diffusers.loaders.lora_pipeline import FluxLoraLoaderMixin
 from diffusers.modular_pipelines.modular_pipeline import ModularPipeline
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 
@@ -15,6 +17,38 @@ from source.py.image_model import ImageModel
 from source.py.image_pipe import ImagePipeline
 from source.py.lora_convert import to_diffusers
 from source.py.lora_model import LoraModel
+
+_diffusers_module_shape = FluxLoraLoaderMixin._calculate_module_shape
+
+
+def _sdnq_module_shape(
+    model: torch.nn.Module,
+    base_module: torch.nn.Module | None = None,
+    base_weight_param_name: str = "",
+) -> torch.Size:
+    """Weight shape of a layer a FLUX.1 LoRA targets, read through SDNQ.
+
+    Before loading a FLUX.1 LoRA, Diffusers compares each weight it targets
+    to the LoRA's, to widen the layers a Control LoRA needs. It unpacks the
+    weights of bitsandbytes and GGUF, but not SDNQ's flat ones, so no FLUX.1
+    LoRA would load on an SDNQ checkpoint. SDNQ keeps the real shape aside.
+    """
+    if base_module is None:
+        base_module = model.get_submodule(
+            base_weight_param_name.removesuffix(".weight")
+        )
+
+    dequantizer = getattr(base_module, "sdnq_dequantizer", None)
+
+    if dequantizer is None:
+        return _diffusers_module_shape(model, base_module)  # ty: ignore
+
+    return torch.Size(dequantizer.original_shape)
+
+
+FluxLoraLoaderMixin._calculate_module_shape = staticmethod(  # ty: ignore
+    _sdnq_module_shape
+)
 
 
 def select_lora_file(t: Callable[[str], str]) -> Path | None:
