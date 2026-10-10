@@ -30,6 +30,7 @@ from torch._dynamo.utils import counters
 from source.py.anima_flash import install_anima_flash_attn
 from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
+from source.py.frame_cache import drop_frame_features
 from source.py.image_model import ImageModel
 from source.py.krea2_flash import install_krea2_flash_attn
 from source.py.offload_strat import (
@@ -477,6 +478,10 @@ class ImagePipeline:
             self.instance.vae.to(memory_format=torch.channels_last)
         except (AttributeError, RuntimeError) as e:
             logger.warning(f"Can't apply memory format optimization: {e}")
+
+        # Every pass here is a single picture, so no frame comes after to read
+        # what a causal VAE keeps for one.
+        drop_frame_features(getattr(self.instance, "vae", None))
 
         # Dropped before the reclaim below, and before anything is measured: each
         # hook holds the component it offloads, so the weights of the pipeline

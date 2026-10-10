@@ -12,6 +12,7 @@ from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils.weak import WeakTensorKeyDictionary
 
 from source.py.custom_logger import logger
+from source.py.frame_cache import drop_frame_features
 
 READ_ARCHITECTURES: dict[tuple[int, str], "RunMemory"] = {}
 """What each architecture was read to cost, by denoiser footprint and VAE class.
@@ -424,7 +425,13 @@ def meta_copy(module: torch.nn.Module) -> torch.nn.Module | None:
         logger.warning(f"Can't rebuild {type(module).__name__} to size it: {e}.")
         return None
 
-    return copy if isinstance(copy, torch.nn.Module) else None
+    if not isinstance(copy, torch.nn.Module):
+        return None
+
+    # Walked as the loaded module runs, which keeps nothing for a frame after.
+    drop_frame_features(copy)
+
+    return copy
 
 
 @dataclass
