@@ -2,7 +2,7 @@
 
 import gc
 import weakref
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from inspect import signature
 from itertools import chain
@@ -1837,7 +1837,7 @@ class ImagePipeline:
         self.offload_hooks = []
 
     @contextmanager
-    def unhooked(self) -> Iterator[None]:
+    def unhooked(self) -> Generator[None]:
         """Drop the CPU offload hooks for the time of a weight edit.
 
         Diffusers' LoRA helpers manage their own offload modes, not our mix of
