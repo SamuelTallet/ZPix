@@ -70,8 +70,10 @@ def write_dtype_size(module: torch.nn.Module, stream_size: int) -> int:
     accumulates a product of integers, rescales that by the scale it keeps
     beside those weights, and only then narrows the result down to the stream.
     The accumulator and the rescaled copy are both the shape of what the layer
-    writes and both as wide as that scale, and they are alive together, so the
-    widest layer of a block asks several times what its output alone would.
+    writes and they are alive together, so the widest layer of a block asks
+    several times what its output alone would. The copy is as wide as that
+    scale, the accumulator as wide as an integer product, whatever the scale:
+    read at the scale's width, a narrow scale sized the accumulator short.
 
     Missing this read a first walk of these models at half what they allocate,
     and half a reading is worse than none here: the denoiser is seated where it
@@ -91,7 +93,7 @@ def write_dtype_size(module: torch.nn.Module, stream_size: int) -> int:
     if not torch.is_tensor(scale):
         return stream_size
 
-    return 2 * scale.element_size()
+    return torch.int32.itemsize + scale.element_size()
 
 
 def written_width(module: torch.nn.Module) -> int:
