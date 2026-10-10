@@ -65,7 +65,12 @@ class Qwen21FlashAttnProcessor:
             )
 
         query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
-            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
+            attn,
+            hidden_states,
+            rotary_emb,
+            layer_cache,
+            kv_cache_mode,
+            cache_write_slice,
         )
 
         # query/key/value are (B, S, H, D), the layout the kernel takes.
