@@ -3,7 +3,11 @@
 #include <vector>
 
 void StarterThread::run(std::stop_token stoken, JobObject& job, std::function<void()> on_exit) {
-    std::string cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File start.ps1";
+    // Full path since PowerShell folder may be missing from PATH.
+    char systemDir[MAX_PATH];
+    GetSystemDirectoryA(systemDir, MAX_PATH);
+    std::string powershell = std::string(systemDir) + "\\WindowsPowerShell\\v1.0\\powershell.exe";
+    std::string cmd = "\"" + powershell + "\" -NoProfile -ExecutionPolicy Bypass -File start.ps1";
 
     STARTUPINFOA si = { sizeof(si) };
     PROCESS_INFORMATION pi = { 0 };
@@ -30,6 +34,17 @@ void StarterThread::run(std::stop_token stoken, JobObject& job, std::function<vo
 
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
+    } else {
+        // Without this, the launcher would wait forever with no window nor console.
+        DWORD error = GetLastError();
+        // Quit before showing error so this instance can't open a window meanwhile.
+        if (on_exit) on_exit();
+        char* reason = nullptr;
+        FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL, error, 0, reinterpret_cast<LPSTR>(&reason), 0, NULL);
+        std::string message = "Failed to run PowerShell (error " + std::to_string(error) + ").\n" + (reason ? reason : "");
+        LocalFree(reason);
+        MessageBoxA(NULL, message.c_str(), "Initialization Error", MB_ICONERROR);
     }
 }
 
