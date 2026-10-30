@@ -43,6 +43,7 @@ class ImageModel(BaseModel):
             "FLUX.2",
             "Krea 2",
             "Qwen-Image 2.1",
+            "SDXL",
             "Z-Image",
         )
 

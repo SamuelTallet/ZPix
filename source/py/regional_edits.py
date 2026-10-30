@@ -13,6 +13,9 @@ from diffusers.pipelines.flux2.pipeline_flux2_klein_inpaint import (
     Flux2KleinInpaintPipeline,
 )
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint import (
+    StableDiffusionXLInpaintPipeline,
+)
 from diffusers.pipelines.z_image.pipeline_z_image_inpaint import ZImageInpaintPipeline
 from gradio_canvas import Doc
 from gradio_select_tools import selection_to_mask
@@ -28,6 +31,7 @@ from source.py.qwen21_inpaint import create_qwen21_inpaint_pipe
 INPAINT_PIPELINES: dict[str, tuple[type[DiffusionPipeline], int]] = {
     "Z-Image": (ZImageInpaintPipeline, 0),
     "FLUX": (FluxInpaintPipeline, 0),
+    "SDXL": (StableDiffusionXLInpaintPipeline, 0),
     # Appends the source image to the stream, as a reference.
     "FLUX.2": (Flux2KleinInpaintPipeline, 1),
 }
@@ -42,10 +46,18 @@ lasso covers, so it can spill that far out of the lasso."""
 INPAINT_MAX_PIXELS: dict[str, int] = {
     "FLUX.2": 1024 * 1024,
     "Qwen-Image 2.1": 1024 * 1024,
+    "SDXL": 1024 * 1024,
 }
 """Pixels a family inpaints at, at most, whatever size the source image is: the
-FLUX.2 [klein] pipeline scales it down to them, and Qwen-Image 2.1 reads its
-condition image at about as many."""
+FLUX.2 [klein] pipeline scales it down to them, Qwen-Image 2.1 reads its
+condition image at about as many, and SDXL generates poorly beyond them."""
+
+INPAINT_MIN_PIXELS: dict[str, int] = {
+    "SDXL": 768 * 768,
+}
+"""Pixels a family inpaints at, at least, whatever size the source image is: SDXL
+smears colors over a region denoised at a much smaller size, e.g. a High-Res Fix
+around a small lasso. The result is scaled back to the source image."""
 
 FEATHER_RADIUS = 4
 """Blur of the edge the source image is pasted back along, so no seam shows."""
@@ -162,13 +174,15 @@ def get_inpaint_size(inpaint_source: Image.Image, family: str) -> tuple[int, int
     source image: the one to fit memory to, rather than the source image's.
 
     Floored to whole latent cells, as pipelines refuse or floor other sizes, and
-    scaled down to what the family is capped at, if it is.
+    scaled to the pixels the family is bounded by, if it is.
     """
     width, height = inpaint_source.size
-    max_pixels = INPAINT_MAX_PIXELS.get(family)
+    pixels = width * height
+    bounded_pixels = max(pixels, INPAINT_MIN_PIXELS.get(family, 0))
+    bounded_pixels = min(bounded_pixels, INPAINT_MAX_PIXELS.get(family, bounded_pixels))
 
-    if max_pixels and width * height > max_pixels:
-        scale = (max_pixels / (width * height)) ** 0.5
+    if bounded_pixels != pixels:
+        scale = (bounded_pixels / pixels) ** 0.5
         width, height = width * scale, height * scale
 
     return (
