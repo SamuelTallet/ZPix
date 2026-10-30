@@ -44,6 +44,7 @@ from source.py.offload_strat import (
 from source.py.qwen21_flash import install_qwen21_flash_attn
 from source.py.resolutions import smallest_picture_pixels
 from source.py.run_memory import RunMemory, read_architecture
+from source.py.sdxl_flash import install_sdxl_flash_attn
 
 KERNEL_CACHES = {
     "Triton": "TRITON_CACHE_DIR",
@@ -473,6 +474,14 @@ class ImagePipeline:
                     logger.warning(
                         f"FlashAttention is not available for Qwen-Image 2.1: {e}"
                     )
+
+            # The stock UNet processor calls SDPA directly, out of the backend's
+            # reach.
+            elif model.family == "SDXL":
+                try:
+                    install_sdxl_flash_attn(self.instance)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"FlashAttention is not available for SDXL: {e}")
 
         try:
             self.instance.vae.to(memory_format=torch.channels_last)
