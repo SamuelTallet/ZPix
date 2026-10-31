@@ -96,9 +96,8 @@ class DenoiserFirstOffloadStrategy(AutoOffloadStrategy):
         # Left to the arbitration below, that room is kept whenever the arrival
         # fits without it, which is most of the time and never when it counts: a
         # generation that compiles asks for several times a settled one, and what
-        # it overruns by is smaller than what a finished encoder holds. Sizing the
-        # reserve to catch that is what the note in `WARMING_UP_RUN` says not to
-        # try again.
+        # it overruns by is smaller than what a finished encoder holds. The reserve
+        # can't be sized to catch that: `WARMING_UP_RUN` says why.
         released = (
             [hook for hook in hooks if eviction_rank(hook.model_id) == ENCODER_RANK]
             if eviction_rank(model_id) >= DENOISER_RANK
@@ -124,9 +123,9 @@ class DenoiserFirstOffloadStrategy(AutoOffloadStrategy):
         for_room = []
 
         # The seat sticks to whoever is sitting: an arriving sibling may not take
-        # the denoiser's place. Ranking alone only made it the last to go, which
-        # is still gone, and an encoder called once was watched to unseat it on
-        # its way in and be unseated on its way out, both trips paid each way.
+        # the denoiser's place. Ranking alone only makes it the last to go, which
+        # is still gone, and an encoder called once would unseat it on its way in
+        # and be unseated on its way out, both trips paid each way.
         candidates = [
             hook
             for hook in hooks

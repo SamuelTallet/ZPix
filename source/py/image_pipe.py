@@ -69,8 +69,8 @@ in a reading of it:
   it is already sitting there, before anything has had the chance to arbitrate;
 - the room the allocator needs to place the blocks of a run, which it can't find
   on the last slice of a card and can't rearrange where `expandable_segments` is
-  unavailable. A seat granted with a twentieth of the card to spare was watched
-  to spend minutes on a step, at a resolution every figure said fitted.
+  unavailable. A seat granted with next to nothing to spare can spend minutes on
+  a step, at a resolution every figure says fits.
 
 Sized for a desktop, its windows, the image editor a picture is likely to be
 opened in next, and an adapter on top. Not for a game running beside them: one
@@ -81,8 +81,8 @@ pictures in.
 Flat, and deliberately so. What the right figure is depends on the card, on the
 driver and on what else the machine is running, none of which the architecture
 of a model says anything about: it answers for what the reading can't see rather
-than for a shortcoming of it. Above about twelve gigabytes of card it costs
-nothing, every model here sitting whole with room to spare.
+than for a shortcoming of it. On a large card it costs nothing, every model
+sitting whole with room to spare.
 """
 
 WARMING_UP_RUN = 3
@@ -94,18 +94,16 @@ generation in a resolution's life pays this, and the run is counted several
 times over for it. Only the first of the session for that shape, though:
 `compiled_shapes` says which ones the session has compiled already.
 
-Measured, not reasoned: a denoiser settling at 4.2GB was watched to hold 5.9GB
-while compiling, and to have the allocator take 7.8GB of an 8GB card to place
-them. Three times the run covers both.
+Empirical rather than derived: the factor covers both what a compiling run holds
+and the room the allocator takes to place it.
 
 Charged to the seat alone, never to the eviction reserve: this says what a
 generation might reach, where the reserve is what every arrival has to leave
 behind, and one nothing can reach empties the GPU on each of them.
 
-Sizing the reserve on it was tried and doesn't hold: what a compiling run reaches
-isn't a multiple of a settled one at every resolution, so the multiple covering
-one leaves the arrival short at another. `ENCODER_RANK` frees that room without a
-figure at all.
+It can't size that reserve either: what a compiling run reaches isn't a multiple
+of a settled one at every resolution, so the multiple covering one leaves the
+arrival short at another. `ENCODER_RANK` frees that room without a figure at all.
 """
 
 KEPT_KEYS_ARGUMENT = "kv_cache"
@@ -154,9 +152,9 @@ the context it could not see and both neighbours are wrong: sharing half a tile
 leaves that edge almost no weight where it lands.
 
 It takes the colour out of the join, not the join. What survives is a step of
-brightness, which no size and no overlap measured here removes, a whole pass
-alone being exact. Widening further is not a direction: past a half the blend
-spans so much of the tile that the join returns, paid for twice over.
+brightness, which no size and no overlap tried removes, a whole pass alone being
+exact. Widening further is not a direction: past a half the blend spans so much
+of the tile that the join returns, paid for twice over.
 """
 
 
@@ -538,8 +536,8 @@ class ImagePipeline:
         # taking it again on the picture actually asked for.
         #
         # The run's margin and nothing else, here as before every generation: the
-        # reserve answers to the loop. Reserving for a whole pass was watched to
-        # declare a denoiser too large for a card it fits.
+        # reserve answers to the loop. Reserving for a whole pass can declare a
+        # denoiser too large for a card it fits.
         self.memory_reserve = self.run_bytes(smallest_picture_pixels())
         self.residency_reserve = self.memory_reserve
 
@@ -569,8 +567,8 @@ class ImagePipeline:
         takes its cut first, and a share of the GPU would ignore it.
 
         What it decides is not how a seam falls but whether there is one: no
-        tiling of this decoder was measured seamless, every size and overlap
-        leaving a step of brightness at the join where the whole pass is exact.
+        tiling tried is seamless, every size and overlap leaving a step of
+        brightness at the join where the whole pass is exact.
 
         Args:
             free_memory: GPU memory free, in bytes, with none of our weights
@@ -665,10 +663,10 @@ class ImagePipeline:
         taking its share of the GPU still shows up in the figure.
 
         Added back tensor by tensor, and only those actually on the card. A
-        component is no longer all on one side of the bus: a denoiser seats the
-        blocks that fit and streams the others, and asking it for one device, as
-        this used to, reads whichever side its first weight happens to be on and
-        then adds back the whole of it either way.
+        component isn't always all on one side of the bus: a denoiser seats the
+        blocks that fit and streams the others, and asking it for one device reads
+        whichever side its first weight happens to be on, then adds back the whole
+        of it either way.
         """
         memory_info = get_memory_info()
 
@@ -728,18 +726,7 @@ class ImagePipeline:
         Walked once, at load, and kept for the session: what a block writes and
         what a decode holds are fixed by the shapes the model was built with, so
         one reading answers every resolution, including those never generated.
-
-        This used to be measured instead, off the reserve a generation peaked at,
-        divided by the picture it made and carried into the next size up. Two
-        things break that. The reserve is not the run: an allocator under no
-        pressure keeps the blocks it cached, so on a GPU with room to spare the
-        figure approaches the whole GPU whatever the run really held. And the
-        division assumes a cost proportional to the picture, where a good part of
-        what a generation reserves doesn't move with it, so the fixed part gets
-        multiplied along with the rest. Both err the same way, upwards, and the
-        larger the GPU the further: the model is then refused a seat it had the
-        room for, at every resolution above the one that was measured, and it
-        crosses the bus at every step for nothing.
+        `RunMemory` says why this is read rather than measured.
         """
         self.run_memory = read_architecture(
             self.denoiser(), getattr(self.instance, "vae", None)
@@ -980,17 +967,17 @@ class ImagePipeline:
         self.cache_margin = self.cache_bytes(self.reference_pixels)
 
         # What every arrival leaves free behind it: the loop's margin alone. Read
-        # on the decode's instead, the shortest phase set the room every other
-        # one has to leave, and the strategy emptied the GPU on each arrival.
+        # on the decode's instead, the shortest phase sets the room every other
+        # one has to leave, and the strategy empties the GPU on each arrival.
         # The cache is the loop's too, and the loop's alone.
         loop = self.run_margin + self.cache_margin
         self.memory_reserve = loop
 
         # Who may sit beside the denoiser is another question, and the widest
         # phase answers it: an encoder resident through a decode that wants the
-        # rest of the card leaves the pass nowhere to go, and was watched to be
-        # evicted for the denoiser and back, twice a generation. Called once, it
-        # pays the bus; neither figure here can take the denoiser's seat.
+        # rest of the card leaves the pass nowhere to go, and can be evicted for
+        # the denoiser and back, twice a generation. Called once, it pays the bus;
+        # neither figure here can take the denoiser's seat.
         #
         # The whole pass is that phase only where the pass runs whole. A tiled one
         # is bounded by its tile, and asked for the picture's figure it names a
@@ -1037,8 +1024,8 @@ class ImagePipeline:
 
         The trip over the bus costs less than that overflow, and by a wide margin.
         The whole of the run's margin is what the seat is weighed against for that
-        reason: weighing it against a fraction was measured several times slower
-        at high resolution. Do not trade this threshold for room that isn't there.
+        reason: weighed against a fraction, a high resolution can run several
+        times slower. Do not trade this threshold for room that isn't there.
 
         That margin is the run's, though, not the GPU's. Sized on anything that
         grows with the card rather than with the picture, this refuses the seat
@@ -1050,8 +1037,8 @@ class ImagePipeline:
         decides here: a large one absorbs the difference and never notices, where
         a small one lends the seat back for the one generation that pays for the
         rest. Weighed on a settled run instead, a denoiser that fits by every
-        figure saturated the card while compiling and spent twenty seconds on a
-        step that costs six.
+        figure can saturate the card while compiling, its steps slowing several
+        times over.
 
         Args:
             pixels: Pixels of the picture to generate.
@@ -1115,7 +1102,7 @@ class ImagePipeline:
         """What the coming run is weighed as asking beyond the weights, in bytes.
 
         The margin its resolution settled, several times over while the graphs
-        are still to compile. `WARMING_UP_RUN` says what that is measured on.
+        are still to compile. `WARMING_UP_RUN` says why.
 
         An adapter needs no factor: its weights are in the denoiser's footprint,
         and the walk counts its layers.
@@ -1138,12 +1125,10 @@ class ImagePipeline:
         has run its last step, so what they hold is room the pass can have for
         the price of a trip. A pass too wide for the whole card is another
         matter, and tiling bounds it by the band at the price of a join, no cut
-        of this decoder having been measured exact.
+        tried being exact.
 
-        This used to answer `True` for every streamed denoiser whatever the
-        budget said, tiling a 0.9MP pass beside a budget of 1.7MP. Streaming and
-        tiling are not one question, and joining them let each rearrange the
-        other's answer.
+        A streamed denoiser changes nothing here. Streaming and tiling are not one
+        question, and joining them lets each rearrange the other's answer.
 
         Args:
             pixels: Pixels of the picture to generate.
@@ -1162,12 +1147,12 @@ class ImagePipeline:
         The VAE encodes and decodes the picture as a whole, so its peak memory
         grows with the resolution and, past a point, it alone fills the GPU. Tiling
         bounds that peak and leaves a join across the picture, one no size and no
-        overlap was measured to remove, so it's a trade only worth making when the
-        picture wouldn't go through otherwise.
+        overlap tried removes, so it's a trade only worth making when the picture
+        wouldn't go through otherwise.
 
         What the pass holds is the decoder's own, read off its stages: they end at
         the resolution of the picture, where the widest of them sets the peak, and
-        two families put a different number of channels through that last stage.
+        families differ in the channels they put through that last stage.
         A figure carried from one decoder to another seams pictures that had the
         room to go through whole.
 
@@ -1260,17 +1245,15 @@ class ImagePipeline:
         Diffusers sizes a tile in pixels, and every family's figures were written
         against a VAE compressing by eight. One compressing twice as hard is
         handed half the latent for the same tile, and the blend then runs on too
-        few cells to hide the seam: on a 16x decoder, the defaults streaked a
-        picture a hundredfold against the same latent decoded whole. Sized here
-        in latent, multiplied back out, then grown to the largest the budget
-        holds.
+        few cells to hide the seam. Sized here in latent, multiplied back out, then
+        grown to the largest the budget holds.
 
         Cut across the height alone, the band keeping the whole width. A grid
         joins its neighbours twice over and one of those joins runs down the
         picture, which on a portrait is down a face; bands leave a single join,
         lying across, and cost the same memory for the same area decoded at
-        once. No blend was measured exact, so what is chosen here is how much of
-        the picture a join is allowed to cross, never whether there is one.
+        once. No blend tried is exact, so what is chosen here is how much of the
+        picture a join is allowed to cross, never whether there is one.
 
         The caller also uses this area to free enough room before decoding.
 
@@ -1359,13 +1342,12 @@ class ImagePipeline:
 
             Diffusers' offload rather than Accelerate's `cpu_offload`, for the
             stream it fetches on: the next leaf crosses the bus while the current
-            one computes, where `cpu_offload` waits for each. Measured on a Krea 2
-            block, 13ms of bus a step against 321ms. `leaf_level` and no other:
-            `block_level` on that stream measured slower than `cpu_offload`.
+            one computes, where `cpu_offload` waits for each. `leaf_level` and no
+            other: `block_level` on that stream came out slower than `cpu_offload`.
 
-            Host memory is left pageable. Pinning buys a tenth of an already small
-            figure and can't be paged back out, which a machine holding a large
-            model in little memory pays for everywhere else.
+            Host memory is left pageable. Pinning bought little when tried and
+            can't be paged back out, which a machine holding a large model in
+            little memory pays for everywhere else.
             """
             apply_group_offloading(
                 component,
@@ -1557,8 +1539,8 @@ class ImagePipeline:
 
         The denoiser is among them, and this is the one place it ever is: the
         last step is over by the time this runs, so its seat is worth the trip
-        back and no more. Kept seated through a 1080p decode, the pass had to be
-        tiled instead and the generation went from 4.2 to 23.3 seconds a step.
+        back and no more. Kept seated through a wide decode, the pass may have to
+        be tiled instead, which can cost far more than that trip.
         """
         vae = getattr(self.instance, "vae", None)
 
@@ -1663,8 +1645,8 @@ class ImagePipeline:
         Diffusers keeps one tiling per VAE for its encodes and decodes alike, and
         the decode's is cut to the picture to make: bands as wide as it is. A
         reference comes in at a size of its own, and one wider than the picture
-        was cut into a band and the sliver left over, encoded alone with nothing
-        to blend it against. The denoiser copies what it reads, so the edit came
+        gets cut into a band and the sliver left over, encoded alone with nothing
+        to blend it against. The denoiser copies what it reads, so the edit comes
         out with a strip down its edge.
 
         Each encode is then weighed on its own picture and its own encoder, and
@@ -1706,8 +1688,8 @@ class ImagePipeline:
 
         A join in a reference is one the denoiser reads and reproduces, so the
         whole pass is worth more here than anywhere: it is refused only for want
-        of room, against the encoder's own cost, which can be a third of what the
-        decoder holds over the same picture.
+        of room, against the encoder's own cost, which can be far less than what
+        the decoder holds over the same picture.
 
         Args:
             vae: The VAE about to encode.
@@ -1822,9 +1804,8 @@ class ImagePipeline:
 
         Tracing a new shape leaves the tensors of the traced call in reference
         cycles, which only a collection reaches, and Python runs one when it sees
-        fit. Meanwhile they stay on the card: the two steps compiling a Qwen-Image
-        2.1 edit were watched to leave 2.3GB there, and a streamed loop spilling
-        on them into host memory took 27 seconds a step where it took 2.3 with
+        fit. Meanwhile they stay on the card, and a streamed loop can spill on them
+        into host memory, its steps then costing many times what they do with
         them collected.
 
         Only after a call that compiled, which Dynamo counts: a settled run leaves
@@ -1907,15 +1888,15 @@ class ImagePipeline:
 
             # Read again under the footprint the edit moved. The architecture is
             # the one it was, adapters changing no shape the walk reads, but that
-            # footprint is what files the reading and what a pass was seen to be
-            # handed, so neither is found under the weights that came out of this.
+            # footprint is what files the reading, which the weights that came out
+            # of this wouldn't find otherwise.
             self.read_run_memory()
 
             # The new weights come in unhooked, and heavier. Projected again
             # rather than handed back the seat the weights before them earned: an
-            # adapter landing on a seated denoiser was watched to take the card
-            # past what it holds, where the driver pages instead of failing and a
-            # step went from 4.5 to 27.9 seconds for the rest of the session.
+            # adapter landing on a seated denoiser can take the card past what it
+            # holds, where the driver pages instead of failing and every step
+            # slows down for the rest of the session.
             self.offload_to_cpu(
                 self.total_memory, stream_denoiser=self.denoiser_streams()
             )

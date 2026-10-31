@@ -85,12 +85,12 @@ def write_dtype_size(module: torch.nn.Module, stream_size: int) -> int:
     writes and they are alive together, so the widest layer of a block asks
     several times what its output alone would. The copy is as wide as that
     scale, the accumulator as wide as an integer product, whatever the scale:
-    read at the scale's width, a narrow scale sized the accumulator short.
+    read at the scale's width, a narrow scale would size the accumulator short.
 
-    Missing this read a first walk of these models at half what they allocate,
-    and half a reading is worse than none here: the denoiser is seated where it
-    doesn't fit, the driver backs the overflow with host memory, and the steps
-    then cost far more than the crossing the seat was there to save.
+    Missing this reads these models short, and a short reading is worse than none
+    here: the denoiser is seated where it doesn't fit, the driver backs the
+    overflow with host memory, and the steps then cost far more than the crossing
+    the seat was there to save.
 
     Args:
         module: The layer whose write is being sized.
@@ -446,11 +446,11 @@ def scope_peak(
     stream, since that is all that survives of the layer before; and the stream
     the trunk carries end to end and each block adds its result back into.
 
-    Summing every width instead read as four times what a denoiser allocates, on
-    every family here, and grew with the depth of what a block declares rather
-    than with anything a pass holds. On a card the weights nearly fill, that
-    difference is the whole of the denoiser's seat: it was refused one it had
-    the room for and crossed the bus at every step.
+    Summing every width instead reads several times what a denoiser allocates, and
+    grows with the depth of what a block declares rather than with anything a pass
+    holds. On a card the weights nearly fill, that difference is the whole of the
+    denoiser's seat: it is refused one it has the room for and crosses the bus at
+    every step.
 
     A write on a coarser grid than the tokens are counted on is a share of a
     token wide, and weighs that share.
@@ -552,10 +552,9 @@ def bytes_per_token(denoiser: torch.nn.Module) -> int:
     for them rather than argued about.
 
     What those same outer layers write per sample is not read at all. A timestep
-    becomes a modulation as wide as several streams, and one number per picture
-    was being charged to every token of it: on the families here that alone was
-    a third of the figure, and it grew with a resolution it has nothing to do
-    with.
+    becomes a modulation as wide as several streams, but it is one number per
+    picture: charged to every token, it grows with a resolution it has nothing to
+    do with.
 
     Attention is counted through the tensors its projections write, never the
     scores, which the backends this application installs don't materialize.
@@ -779,9 +778,6 @@ class LiveTensors(TorchDispatchMode):
         it works from is still there, and a kernel asks for scratch of its own
         that no walk over shapes can see. Whatever those are, they are the shape
         of a tensor next to them, and the widest is the one to stand in for it.
-
-        Read this way, the two families here land within a twentieth of what a
-        decode was measured to allocate, one just over and one just under.
         """
         last = self.step
         widest = 0
@@ -910,7 +906,7 @@ def walk_encode(vae: torch.nn.Module, compression: int) -> int | None:
     """Walk an encode of a known picture and read what it holds, per pixel.
 
     Walked apart from the decode rather than read off it: the two halves of a VAE
-    are built to different widths, and an encoder can hold a third of what its
+    are built to different widths, and an encoder can hold far less than its
     decoder does over the same picture. Sized on the decode, a reference that
     goes through whole gets cut instead, and the denoiser reads the join.
 
@@ -1017,11 +1013,11 @@ class RunMemory:
     answers the sizes a session never generates as well as the ones it does.
 
     That is the whole point of reading rather than measuring. What a generation
-    was watched to reserve says what that resolution cost, and a figure divided by
-    the picture it was taken on carries the fixed part of the reserve into every
-    other: it lands far above the truth on a roomy GPU, where the allocator holds
-    the blocks it caches rather than hand them back, and the model is then refused
-    a seat it had the room for at every resolution above the one measured.
+    reserves says what that resolution cost, and a figure divided by the picture
+    it was taken on carries the fixed part of the reserve into every other: it
+    lands far above the truth on a roomy GPU, where the allocator holds the blocks
+    it caches rather than hand them back, and the model is then refused a seat it
+    has the room for at every resolution above the one measured.
     """
 
     denoiser_bytes_per_token: int
@@ -1047,12 +1043,10 @@ class RunMemory:
     def run_bytes(self, pixels: int) -> int:
         """What a generation of this many pixels asks beyond the weights, in bytes.
 
-        The walk, and nothing else. A correction watched at runtime sat here twice
-        and was wrong both times, once reading the crowding around a generation and
-        once the weights arriving inside a call, each time inflating the margin
-        enough to cost a seat the walk had sized correctly. A third reading, of the
-        tokens a pass was handed, answered what the patch sizes in the configuration
-        already say. Nothing measured belongs here.
+        The walk, and nothing else. A correction read at runtime picks up the
+        crowding around a generation or the weights arriving inside a call, and
+        inflates the margin enough to cost a seat the walk sized correctly. Nothing
+        measured belongs here.
         """
         return self.tokens(pixels) * self.denoiser_bytes_per_token
 
