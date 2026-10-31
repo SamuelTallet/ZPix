@@ -1044,14 +1044,10 @@ class ImagePipeline:
         if self.instance is None or self.offload_strategy is None:
             return
 
-        weights = self.denoiser_footprint()
+        streams, needed, available = self.weigh_seat()
 
-        if not weights:
+        if not needed:
             return
-
-        needed = weights + self.projected_run()
-        available = self.free_memory_without_ours()
-        streams = self.denoiser_streams()
 
         # The seat is not the only thing a resolution settles: who sits beside the
         # denoiser was arbitrated against the reserve of the picture before, and a
@@ -1086,15 +1082,27 @@ class ImagePipeline:
         the caller sizes on it beforehand. Passing it as well invites the two to
         disagree.
         """
+        return self.weigh_seat()[0]
+
+    def weigh_seat(self) -> tuple[bool, int, int]:
+        """Weigh what the denoiser's seat needs against what the GPU offers.
+
+        Read once, so that what is logged is what decided.
+
+        Returns:
+            Whether the denoiser streams, the bytes needed and the bytes offered
+            before `RESERVED_MEMORY`. Without a denoiser to size, the streaming
+            stands and both figures are zero.
+        """
         weights = self.denoiser_footprint()
 
         if not weights:
-            return self.streams_denoiser
+            return self.streams_denoiser, 0, 0
 
-        return (
-            weights + self.projected_run()
-            > self.free_memory_without_ours() - RESERVED_MEMORY
-        )
+        needed = weights + self.projected_run()
+        available = self.free_memory_without_ours()
+
+        return needed > available - RESERVED_MEMORY, needed, available
 
     def projected_run(self) -> int:
         """What the coming run is weighed as asking beyond the weights, in bytes.
