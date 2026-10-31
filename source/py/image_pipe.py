@@ -1697,6 +1697,10 @@ class ImagePipeline:
         of room, against the encoder's own cost, which can be far less than what
         the decoder holds over the same picture.
 
+        Short of that room, the text encoders leave first: they are done with this
+        generation, and their next trip costs far less than a join. An encode that
+        fits leaves them where they are.
+
         Args:
             vae: The VAE about to encode.
             width: Width of the picture to encode, in pixels.
@@ -1705,6 +1709,10 @@ class ImagePipeline:
         pixels = width * height
         budget = self.encode_budget(vae)
         asked = self.encode_bytes(pixels)
+
+        if budget is not None and asked > budget and self.evict_encoders():
+            budget = self.encode_budget(vae)
+
         needs_tiling = budget is None or asked > budget
 
         toggle = getattr(
@@ -1741,8 +1749,8 @@ class ImagePipeline:
 
         Read on the spot rather than taken from the budget read at load: an encode
         runs between the encoders and the loop, beside whatever the arbitration
-        seated, and nothing is evicted for it. On a GPU without offload the load's
-        figure stands, every component staying where it is.
+        seated. On a GPU without offload the load's figure stands, every component
+        staying where it is.
 
         Args:
             vae: The VAE about to encode.
@@ -1760,6 +1768,22 @@ class ImagePipeline:
         absent = absent_bytes(vae, get_execution_device())
 
         return max(memory_info[0] - absent - RESERVED_MEMORY, 0)
+
+    def evict_encoders(self) -> bool:
+        """Send the encoders still on the GPU back to CPU; were there any?"""
+        device = get_execution_device()
+        encoders = [
+            hook
+            for hook in self.offload_hooks
+            if eviction_rank(hook.model_id) == ENCODER_RANK
+            and hook.model.device == device
+        ]
+
+        for hook in encoders:
+            logger.info(f"Evicting {hook.model_id} before the encode.")
+            hook.offload()
+
+        return bool(encoders)
 
     def watch_kept_keys(self) -> None:
         """Note what the denoiser is handed to keep its keys and values in.
