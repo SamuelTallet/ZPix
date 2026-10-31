@@ -996,9 +996,9 @@ def structural_pixels_per_token(
     return compression * max(folded_in, max(sides) ** 2, 1)
 
 
-def denoiser_footprint(denoiser: torch.nn.Module) -> int:
-    """Weight of a denoiser, in bytes, as what keys the figures it leaves behind."""
-    footprint = getattr(denoiser, "get_memory_footprint", None)
+def module_footprint(module: object) -> int:
+    """Weight of a module, in bytes; 0 for what can't say, `None` included."""
+    footprint = getattr(module, "get_memory_footprint", None)
 
     return footprint() if footprint is not None else 0
 
@@ -1082,7 +1082,7 @@ def read_architecture(
     if denoiser is None or vae is None:
         return None
 
-    key = (denoiser_footprint(denoiser), type(vae).__name__)
+    key = (module_footprint(denoiser), type(vae).__name__)
     kept = READ_ARCHITECTURES.get(key)
 
     if kept is not None:

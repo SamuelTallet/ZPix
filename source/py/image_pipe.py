@@ -43,7 +43,7 @@ from source.py.offload_strat import (
 )
 from source.py.qwen21_flash import install_qwen21_flash_attn
 from source.py.resolutions import smallest_picture_pixels
-from source.py.run_memory import RunMemory, read_architecture
+from source.py.run_memory import RunMemory, module_footprint, read_architecture
 from source.py.sdxl_flash import install_sdxl_flash_attn
 
 KERNEL_CACHES = {
@@ -580,18 +580,13 @@ class ImagePipeline:
         if free_memory is None or self.instance is None:
             return None
 
-        def footprint_of(component) -> int:
-            get_footprint = getattr(component, "get_memory_footprint", None)
-
-            return get_footprint() if get_footprint is not None else 0
-
         # Model offload leaves the decoder on the GPU for the whole of its pass,
         # and a budget blind to it tiles nothing and overflows instead.
         if self.offload_strategy is not None:
-            resident = footprint_of(getattr(self.instance, "vae", None))
+            resident = module_footprint(getattr(self.instance, "vae", None))
         else:
             # Nothing evicts on Mac: the whole pipeline stays on the GPU.
-            resident = sum(map(footprint_of, self.instance.components.values()))
+            resident = sum(map(module_footprint, self.instance.components.values()))
 
         # Growing a band to all remaining VRAM leaves no room for allocator
         # overhead or changes in desktop usage. Keep the same headroom as the
@@ -716,9 +711,7 @@ class ImagePipeline:
         Zero when there is none to size, which is also what keys the figures a
         model leaves behind: two pipelines of the same denoiser want the same room.
         """
-        footprint = getattr(self.denoiser(), "get_memory_footprint", None)
-
-        return footprint() if footprint is not None else 0
+        return module_footprint(self.denoiser())
 
     def read_run_memory(self) -> None:
         """Read what the loaded model asks of the GPU, off its own architecture.
