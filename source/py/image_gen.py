@@ -106,7 +106,7 @@ def generate(
     if reference_images and reference_images.get("files"):
         ref_images = [normalize_ref_image(file) for file in reference_images["files"]]
 
-    # Regenerate drawn region of displayed image, at its resolution.
+    # Regenerate drawn region of displayed image.
     inpaint_source = get_inpaint_source(model, lasso, canvas.doc)
 
     # References inpaint pipeline appends to the stream, if any.

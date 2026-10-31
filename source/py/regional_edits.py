@@ -43,14 +43,9 @@ LATENT_CELL = 16
 """Pixels per latent cell, at most: the region regenerated is the cells the
 lasso covers, so it can spill that far out of the lasso."""
 
-INPAINT_MAX_PIXELS: dict[str, int] = {
-    "FLUX.2": 1024 * 1024,
-    "Qwen-Image 2.1": 1024 * 1024,
-    "SDXL": 1024 * 1024,
-}
-"""Pixels a family inpaints at, at most, whatever size the source image is: the
-FLUX.2 [klein] pipeline scales it down to them, Qwen-Image 2.1 reads its
-condition image at about as many, and SDXL generates poorly beyond them."""
+INPAINT_MAX_PIXELS = 1024 * 1024
+"""Pixels a model inpaints at, at most, whatever size the source image is.
+The result is scaled back to the source image."""
 
 INPAINT_MIN_PIXELS: dict[str, int] = {
     "SDXL": 768 * 768,
@@ -174,12 +169,12 @@ def get_inpaint_size(inpaint_source: Image.Image, family: str) -> tuple[int, int
     source image: the one to fit memory to, rather than the source image's.
 
     Floored to whole latent cells, as pipelines refuse or floor other sizes, and
-    scaled to the pixels the family is bounded by, if it is.
+    scaled into the pixels the family is bounded by.
     """
     width, height = inpaint_source.size
     pixels = width * height
     bounded_pixels = max(pixels, INPAINT_MIN_PIXELS.get(family, 0))
-    bounded_pixels = min(bounded_pixels, INPAINT_MAX_PIXELS.get(family, bounded_pixels))
+    bounded_pixels = min(bounded_pixels, INPAINT_MAX_PIXELS)
 
     if bounded_pixels != pixels:
         scale = (bounded_pixels / pixels) ** 0.5
