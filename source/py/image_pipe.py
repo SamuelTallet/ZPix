@@ -207,6 +207,11 @@ def tensor_bytes(
     )
 
 
+def absent_bytes(module: torch.nn.Module, device: torch.device) -> int:
+    """What the tensors of a module not yet on a device weigh, in bytes."""
+    return tensor_bytes(module) - tensor_bytes(module, device=device)
+
+
 def compiled_graphs() -> int:
     """Graphs Dynamo has compiled so far in this process.
 
@@ -1549,7 +1554,7 @@ class ImagePipeline:
             margin = self.decode_margin or self.memory_reserve
             # This wrapper runs before the VAE's onload hook. Its absent weights
             # will also need room after the siblings have been evicted.
-            margin += tensor_bytes(vae) - tensor_bytes(vae, device=device)
+            margin += absent_bytes(vae, device)
 
             # A reference still waiting here never reached the VAE, so the loop
             # ran on the picture's arrangement alone.
@@ -1744,7 +1749,7 @@ class ImagePipeline:
             return None
 
         # The encode's own hook brings in whatever of the weights is still away.
-        absent = tensor_bytes(vae) - tensor_bytes(vae, device=get_execution_device())
+        absent = absent_bytes(vae, get_execution_device())
 
         return max(memory_info[0] - absent - RESERVED_MEMORY, 0)
 
