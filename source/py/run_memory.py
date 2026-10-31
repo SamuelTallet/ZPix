@@ -638,6 +638,20 @@ def cached_bytes_per_token(denoiser: torch.nn.Module) -> int:
     )
 
 
+def entry_channels(module: torch.nn.Module) -> int:
+    """Channels the first layer of a module writing anything reads; 0 if none."""
+    first = next(
+        (
+            child
+            for child in module.modules()
+            if written_width(child) and not list(child.children())
+        ),
+        None,
+    )
+
+    return getattr(first, "in_channels", 0) or 0
+
+
 def latent_channels(vae: torch.nn.Module) -> int:
     """Channels the latent handed to a VAE carries."""
     config = getattr(vae, "config", None)
@@ -648,17 +662,7 @@ def latent_channels(vae: torch.nn.Module) -> int:
         if isinstance(channels, int):
             return channels
 
-    decoder = getattr(vae, "decoder", None)
-    first = next(
-        (
-            child
-            for _, child in (decoder or vae).named_modules()
-            if written_width(child) and not list(child.children())
-        ),
-        None,
-    )
-
-    return getattr(first, "in_channels", 0) or 0
+    return entry_channels(getattr(vae, "decoder", None) or vae)
 
 
 def meta_copy(module: torch.nn.Module) -> torch.nn.Module | None:
@@ -889,17 +893,7 @@ def picture_channels(vae: torch.nn.Module) -> int:
     if isinstance(channels, int):
         return channels
 
-    encoder = getattr(vae, "encoder", None)
-    first = next(
-        (
-            child
-            for _, child in (encoder or vae).named_modules()
-            if written_width(child) and not list(child.children())
-        ),
-        None,
-    )
-
-    return getattr(first, "in_channels", 0) or 0
+    return entry_channels(getattr(vae, "encoder", None) or vae)
 
 
 def walk_encode(vae: torch.nn.Module, compression: int) -> int | None:
