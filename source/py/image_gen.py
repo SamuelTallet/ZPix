@@ -25,7 +25,6 @@ from source.py.image_pipe import ImagePipeline
 from source.py.output_image import OutputImage
 from source.py.ref_images import normalize_ref_image
 from source.py.regional_edits import (
-    create_inpaint_pipe,
     get_inpaint_kwargs,
     get_inpaint_size,
     get_inpaint_source,
@@ -107,13 +106,14 @@ def generate(
         ref_images = [normalize_ref_image(file) for file in reference_images["files"]]
 
     # Regenerate drawn region of displayed image.
-    inpaint_source = get_inpaint_source(model, lasso, canvas.doc)
+    inpaint_source = get_inpaint_source(image_pipe, lasso, canvas.doc)
 
     # References inpaint pipeline appends to the stream, if any.
     inpaint_references = 0
 
     if inpaint_source:
-        pipe, inpaint_references = create_inpaint_pipe(pipe, model.family)
+        pipe = image_pipe.inpaint_instance
+        inpaint_references = image_pipe.inpaint_references
         width, height = get_inpaint_size(inpaint_source, model.family)
         ref_images = []
 

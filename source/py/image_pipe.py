@@ -33,6 +33,7 @@ from source.py.blocking_task import BlockingTask
 from source.py.custom_logger import logger
 from source.py.frame_cache import drop_frame_features
 from source.py.image_model import ImageModel
+from source.py.inpaint_pipes import create_inpaint_pipe
 from source.py.krea2_flash import install_krea2_flash_attn
 from source.py.krea2_img2img import create_krea2_img2img_pipe
 from source.py.offload_strat import (
@@ -300,6 +301,13 @@ class ImagePipeline:
         self.instance: ModularPipeline | DiffusionPipeline | None = None
         """Loaded pipeline, `None` during a swap."""
 
+        self.inpaint_instance: ModularPipeline | DiffusionPipeline | None = None
+        """Pipeline taking a mask, `None` during a swap or without one. Shares the
+        components of `instance`: one replaced there has to be replaced here too."""
+
+        self.inpaint_references = 0
+        """References the inpaint pipeline appends to the denoised stream."""
+
         self.memory_reserve = 0
         """GPU memory the offload strategy keeps free, in bytes; 0 without one."""
 
@@ -561,6 +569,13 @@ class ImagePipeline:
         self.memory_budget = self.measure_memory_budget(
             memory_info[0] if memory_info else None
         )
+
+        try:
+            self.inpaint_instance, self.inpaint_references = create_inpaint_pipe(
+                self.instance, model.family
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Inpainting is not available: {e}")
 
         return model
 
@@ -1944,6 +1959,7 @@ class ImagePipeline:
             # Drop the old pipeline before collecting, otherwise it stays alive
             # and its VRAM makes the next auto CPU offload overly aggressive.
             self.instance = None
+            self.inpaint_instance = None
 
             # Its compiled graphs hold CUDA graph pools no `empty_cache()`
             # reaches: kept, they settle the residency of the model arriving on a
@@ -1978,6 +1994,11 @@ class ImagePipeline:
         """
         blocks = getattr(self.instance, "blocks", None)
         return blocks is not None and "strength" in blocks.input_names
+
+    def supports_mask_image(self) -> bool:
+        """Is there an inpaint pipeline? `False` for families without one, and
+        during a swap."""
+        return self.inpaint_instance is not None
 
     @staticmethod
     def warn_if_not_optimizable(t: Callable[[str], str]) -> None:

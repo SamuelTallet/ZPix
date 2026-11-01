@@ -757,7 +757,7 @@ if __name__ == "__main__":
                     clear_tooltip="\n".join(
                         [*selection_tooltips, t("Click: clear selection")]
                     ),
-                    interactive=initial_model.supports_inpainting(),
+                    interactive=image_pipe.supports_mask_image(),
                 )
                 """Region to edit in displayed document."""
 
@@ -774,7 +774,7 @@ if __name__ == "__main__":
                             ),
                         ]
                     ),
-                    interactive=initial_model.supports_inpainting(),
+                    interactive=image_pipe.supports_mask_image(),
                 )
                 rect_select = RectangleSelectTool(
                     enable_tooltip=t("Enable rectangular selection (M)"),
@@ -783,7 +783,7 @@ if __name__ == "__main__":
                     clear_tooltip="\n".join(
                         [*selection_tooltips, t("Click: clear selection")]
                     ),
-                    interactive=initial_model.supports_inpainting(),
+                    interactive=image_pipe.supports_mask_image(),
                 )
                 ellipse_select = EllipseSelectTool(
                     enable_tooltip=t("Enable elliptical selection (M)"),
@@ -792,7 +792,7 @@ if __name__ == "__main__":
                     clear_tooltip="\n".join(
                         [*selection_tooltips, t("Click: clear selection")]
                     ),
-                    interactive=initial_model.supports_inpainting(),
+                    interactive=image_pipe.supports_mask_image(),
                 )
                 select_tools = [free_lasso, poly_lasso, rect_select, ellipse_select]
 
@@ -823,18 +823,12 @@ if __name__ == "__main__":
                     resolution,
                 ]
                 free_lasso.drawn(
-                    lambda image_model: sync_ui_to_inpainting_mode(
-                        image_model, lasso_drawn=True
-                    ),
-                    inputs=model,
+                    lambda: sync_ui_to_inpainting_mode(image_pipe, lasso_drawn=True),
                     outputs=inpaint_settings,
                     show_progress="hidden",
                 )
                 free_lasso.cleared(
-                    lambda image_model: sync_ui_to_inpainting_mode(
-                        image_model, lasso_drawn=False
-                    ),
-                    inputs=model,
+                    lambda: sync_ui_to_inpainting_mode(image_pipe, lasso_drawn=False),
                     outputs=inpaint_settings,
                     show_progress="hidden",
                 )
@@ -842,16 +836,16 @@ if __name__ == "__main__":
                 # On model load success, allow selecting only if model inpaints.
                 # Selection is kept, but ignored by models that don't inpaint.
                 model_load.success(
-                    lambda image_model, points: (
+                    lambda points: (
                         *[
-                            gr.update(interactive=image_model.supports_inpainting())
+                            gr.update(interactive=image_pipe.supports_mask_image())
                             for _ in select_tools
                         ],
                         *sync_ui_to_inpainting_mode(
-                            image_model, lasso_drawn=bool(points)
+                            image_pipe, lasso_drawn=bool(points)
                         ),
                     ),
-                    inputs=[model, free_lasso],
+                    inputs=free_lasso,
                     outputs=[*select_tools, *inpaint_settings],
                     show_progress="hidden",
                 )
