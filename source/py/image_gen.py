@@ -179,6 +179,10 @@ def generate(
                 inpaint_source, mask, (width, height), int(inpaint_steps), int(steps)
             )
         )
+    elif image_pipe.requires_mask_image():
+        # Repaints everything, from the reference image or else from nothing.
+        pipe_kwargs.setdefault("image", Image.new("RGB", (width, height)))
+        pipe_kwargs["mask_image"] = Image.new("L", (width, height), 255)
 
     with BlockingTask.run(t("Please try again shortly, an image is being generated.")):
         try:

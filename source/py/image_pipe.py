@@ -1988,10 +1988,14 @@ class ImagePipeline:
         """Does this pipeline accept a `strength` argument?
 
         Returns:
-            `True` for strength-based image-to-image pipelines (e.g. Anima, Z-Image),
+            `True` for strength-based image-to-image pipelines (e.g. Anima, Z-Image)
+            and for those requiring a mask (e.g. FLUX.1 Fill),
             `False` for conditioning-based edit models (e.g. FLUX.2 [klein]),
             for text-to-image only pipelines, and during a swap.
         """
+        if self.requires_mask_image():
+            return True
+
         blocks = getattr(self.instance, "blocks", None)
         return blocks is not None and "strength" in blocks.input_names
 
@@ -1999,6 +2003,11 @@ class ImagePipeline:
         """Is there an inpaint pipeline? `False` for families without one, and
         during a swap."""
         return self.inpaint_instance is not None
+
+    def requires_mask_image(self) -> bool:
+        """Is the loaded pipeline its own inpaint pipeline, so it can't generate
+        without a mask (e.g. FLUX.1 Fill)? This returns `False` during a swap."""
+        return self.instance is not None and self.inpaint_instance is self.instance
 
     @staticmethod
     def warn_if_not_optimizable(t: Callable[[str], str]) -> None:

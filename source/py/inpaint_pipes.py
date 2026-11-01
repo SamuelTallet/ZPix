@@ -42,6 +42,10 @@ def create_inpaint_pipe(
         appends to the denoised stream: some read the source image there, rather
         than only starting from it.
     """
+    # Inpaints by itself, its denoiser reading the mask, e.g. FLUX.1 Fill.
+    if "mask_image" in signature(type(pipe).__call__).parameters:
+        return pipe, 0
+
     # These only start from the source image.
     if family == "Anima":
         return create_anima_inpaint_pipe(pipe), 0

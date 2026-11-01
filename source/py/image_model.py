@@ -36,7 +36,12 @@ class ImageModel(BaseModel):
     """Default settings of this model."""
 
     def has_modular_pipeline(self) -> bool:
-        """Does this model's family has a Diffusers modular pipeline?"""
+        """Does this model has a Diffusers modular pipeline?"""
+        # Diffusers has no modular blocks for this
+        # special member of the first FLUX model family.
+        if self.name == "FLUX.1 Fill [dev]":
+            return False
+
         return self.family in (
             "Anima",
             "ERNIE-Image",

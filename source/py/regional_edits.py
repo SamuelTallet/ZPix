@@ -49,10 +49,11 @@ def get_inpaint_strength_ratio(pipe: ImagePipeline) -> float:
 
     Returns:
         0.5 for strength-based pipelines (e.g. Anima, Z-Image), 1.0 for models
-        capable of global edits (e.g. FLUX.2 [klein], Qwen-Image 2.1), which
-        regenerate the region from scratch, guided by its context.
+        capable of global edits (e.g. FLUX.2 [klein], Qwen-Image 2.1) or requiring
+        a mask (e.g. FLUX.1 Fill), which regenerate the region from scratch,
+        guided by its context.
     """
-    return 0.5 if pipe.supports_strength() else 1.0
+    return 0.5 if pipe.supports_strength() and not pipe.requires_mask_image() else 1.0
 
 
 def sync_inpaint_steps(pipe: ImagePipeline, steps: int) -> dict:
