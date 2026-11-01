@@ -545,7 +545,7 @@ if __name__ == "__main__":
                         cfg = gr.Slider(
                             label=t("CFG"),
                             minimum=0.0,
-                            maximum=10.0,
+                            maximum=30.0,
                             value=initial_model.default.cfg,
                             step=0.1,
                         )
