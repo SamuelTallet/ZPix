@@ -62,6 +62,13 @@ ZPix sets up the Python environment and packages for you.
 Models are progressively downloaded from Hugging Face.<br>
 Initial model at start, then other models when requested.
 
+### Custom models folder
+
+By default models land in the Hugging Face cache of your user profile.<br>
+A folder icon in the settings bar lets you pick another location — handy to
+keep them on another drive, or to share a folder you already use with
+ComfyUI. Takes effect at next ZPix start.
+
 ### Text-to-Image
 
 Create an image from a prompt.
