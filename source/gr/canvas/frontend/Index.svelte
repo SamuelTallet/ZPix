@@ -394,8 +394,19 @@
 		space_held = false;
 	}
 
+	/**
+	 * Tools cancel pointerdown, so a press on the canvas doesn't move focus:
+	 * an element focused before, e.g. the "Generate Image" button, would keep
+	 * it, show its focus ring on canvas shortcuts and take keys, e.g. Enter.
+	 */
+	function release_focus(): void {
+		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+	}
+
 	/** Captured, so that tools, e.g. a lasso, don't get the press of a pan. Pans start from the image only. */
 	function on_frame_pointerdown(event: PointerEvent): void {
+		release_focus();
+
 		if (
 			!space_held ||
 			!zoom_level ||
