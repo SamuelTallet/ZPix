@@ -141,10 +141,10 @@ def swap_lora(
                 raise ValueError("No LoRA weights matched the pipeline modules.")
     except Exception as error:
         raise gr.Error(
-            t("Ensure you selected a LoRA for {family}.").format(
-                family=image_model.family
+            t("Ensure you selected a LoRA compatible with {model}.").format(
+                model=image_model.name
             ),
-            duration=5,
+            duration=7,
         ) from error
 
     trigger_word = lora.trigger_word()

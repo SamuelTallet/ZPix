@@ -31,7 +31,7 @@
     "Select a LoRA file to load in ZPix": "Sélectionnez un fichier LoRA à charger dans ZPix",
     "LoRA file": "Fichier LoRA",
     "LoRA file extension must be .safetensors": "L'extension du fichier LoRA doit être .safetensors",
-    "Ensure you selected a LoRA for {family}.": "Assurez-vous d'avoir sélectionné un LoRA pour {family}.",
+    "Ensure you selected a LoRA compatible with {model}.": "Assurez-vous d'avoir sélectionné un LoRA compatible avec {model}.",
     "LoRA loaded": "LoRA chargé",
     "LoRA Strength": "Force du LoRA",
     "Unload LoRA": "Décharger le LoRA",
