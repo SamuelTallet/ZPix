@@ -34,23 +34,3 @@ class ImageModel(BaseModel):
 
     default: Settings
     """Default settings of this model."""
-
-    def has_modular_pipeline(self) -> bool:
-        """Does this model has a Diffusers modular pipeline?"""
-        # Diffusers has no modular blocks for this
-        # special member of the first FLUX model family.
-        if self.name == "FLUX.1 Fill [dev]":
-            return False
-
-        return self.family in (
-            "Anima",
-            "ERNIE-Image",
-            "FLUX",
-            "FLUX.2",
-            "Krea 2",
-            "Qwen-Image",
-            "Qwen-Image 2.1",
-            "SD3",
-            "SDXL",
-            "Z-Image",
-        )

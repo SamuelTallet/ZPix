@@ -407,13 +407,22 @@ class ImagePipeline:
 
         def create_pipe(model_id: str) -> DiffusionPipeline | ModularPipeline:
             """Create a standard pipeline or a modular one."""
-            if not model.has_modular_pipeline():
+            try:
+                # At this stage, only the config is loaded.
+                modular_pipeline = ModularPipeline.from_pretrained(model_id)
+            except ValueError as e:
+                if "ModularPipeline" not in str(e):
+                    raise
+
+                logger.info(f"Loading {model_id} as a standard pipeline: {e}")
+                modular_pipeline = None
+
+            if modular_pipeline is None:
                 return DiffusionPipeline.from_pretrained(
                     model_id,
                     dtype=torch.bfloat16,
                 )
 
-            modular_pipeline = ModularPipeline.from_pretrained(model_id)
             modular_pipeline.load_components(dtype=torch.bfloat16)
 
             # Diffusers ships Krea 2 as text-to-image only.
