@@ -1444,9 +1444,7 @@ class ImagePipeline:
 
         # Let each component evict its siblings when the GPU runs short.
         for hook in hooks:
-            for other_hook in hooks:
-                if other_hook is not hook:
-                    hook.add_other_hook(other_hook)
+            hook.hook.other_hooks = [other for other in hooks if other is not hook]
 
         # Using Diffusers' _all_hooks would reactivate its standard offload at run end.
         self.offload_hooks = hooks
