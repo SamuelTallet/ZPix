@@ -2,6 +2,8 @@
 
 from torch import Tensor
 
+from source.py.moss_loras import moss_to_diffusers
+
 # LoRA up matrix suffixes, mapped to their down matrix ones.
 LORA_MATRICES = {
     "lora_B.weight": "lora_A.weight",
@@ -84,6 +86,9 @@ def to_diffusers(state: dict[str, Tensor], family: str) -> dict[str, Tensor]:
     Returns:
         A state dict Diffusers can load, or the given one if it already is.
     """
+    if family == "MOSS-Image":
+        return moss_to_diffusers(_fold_alphas(state))
+
     if family not in ("FLUX.2", "Krea 2"):
         return state
 

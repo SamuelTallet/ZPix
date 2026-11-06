@@ -16,6 +16,7 @@ from diffusers.pipelines.z_image.pipeline_z_image_inpaint import ZImageInpaintPi
 from source.py.anima_inpaint import create_anima_inpaint_pipe
 from source.py.custom_logger import logger
 from source.py.krea2_inpaint import create_krea2_inpaint_pipe
+from source.py.moss_inpaint import create_moss_inpaint_pipe
 from source.py.qwen21_inpaint import create_qwen21_inpaint_pipe
 
 INPAINT_PIPELINES: dict[str, tuple[type[DiffusionPipeline], int]] = {
@@ -26,8 +27,8 @@ INPAINT_PIPELINES: dict[str, tuple[type[DiffusionPipeline], int]] = {
     "FLUX.2": (Flux2KleinInpaintPipeline, 1),
 }
 """Inpaint pipeline of each family whose models support inpainting, except
-Anima, Krea 2 and Qwen-Image 2.1, which Diffusers ships no inpaint pipeline for,
-and the references it appends to the denoised stream."""
+Anima, Krea 2, MOSS-Image and Qwen-Image 2.1, which Diffusers ships no inpaint
+pipeline for, and the references it appends to the denoised stream."""
 
 
 def create_inpaint_pipe(
@@ -52,6 +53,9 @@ def create_inpaint_pipe(
 
     if family == "Krea 2":
         return create_krea2_inpaint_pipe(pipe), 0
+
+    if family == "MOSS-Image":
+        return create_moss_inpaint_pipe(pipe), 0
 
     # Appends the source image to the stream, as a condition image.
     if family == "Qwen-Image 2.1":

@@ -36,6 +36,8 @@ from source.py.image_model import ImageModel
 from source.py.inpaint_pipes import create_inpaint_pipe
 from source.py.krea2_flash import install_krea2_flash_attn
 from source.py.krea2_img2img import create_krea2_img2img_pipe
+from source.py.moss_blocks import create_moss_pipe
+from source.py.moss_img2img import create_moss_img2img_blocks
 from source.py.offload_strat import (
     DENOISER_RANK,
     ENCODER_RANK,
@@ -407,6 +409,10 @@ class ImagePipeline:
 
         def create_pipe(model_id: str) -> DiffusionPipeline | ModularPipeline:
             """Create a standard pipeline or a modular one."""
+            if model.family == "MOSS-Image":
+                # Diffusers ships no MOSS-Image pipeline: its blocks are ours.
+                return create_moss_pipe(model_id, create_moss_img2img_blocks())
+
             try:
                 # At this stage, only the config is loaded.
                 modular_pipeline = ModularPipeline.from_pretrained(model_id)
@@ -468,7 +474,7 @@ class ImagePipeline:
             if denoiser is not None:
                 denoiser.set_attention_backend("native")
 
-            if model.family in ("Z-Image", "FLUX", "FLUX.2"):
+            if model.family in ("Z-Image", "FLUX", "FLUX.2", "MOSS-Image"):
                 try:
                     self.instance.transformer.set_attention_backend("flash")
                 except Exception as e:  # noqa: BLE001
