@@ -42,7 +42,7 @@ class MOSSImageAttnProcessor:
 
     def __call__(
         self,
-        attn: "MOSSImageAttention",
+        attn: MOSSImageAttention,
         hidden_states: torch.Tensor,
         freqs_cos: torch.Tensor,
         freqs_sin: torch.Tensor,

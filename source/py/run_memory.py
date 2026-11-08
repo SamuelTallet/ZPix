@@ -17,7 +17,7 @@ from torch.utils.weak import WeakTensorKeyDictionary
 from source.py.custom_logger import logger
 from source.py.frame_cache import drop_frame_features
 
-READ_ARCHITECTURES: dict[tuple[int, str], "RunMemory"] = {}
+READ_ARCHITECTURES: dict[tuple[int, str], RunMemory] = {}
 """What each architecture was read to cost, by denoiser footprint and VAE class.
 
 The reading walks a model rather than a generation, so it holds for the life of
@@ -189,7 +189,7 @@ def takes_one_picture(module: torch.nn.Module) -> bool:
     """Can a layer be called on a picture alone, everything else left to defaults?"""
     try:
         parameters = signature(module.forward).parameters.values()
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
     required = [

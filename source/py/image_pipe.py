@@ -1314,7 +1314,7 @@ class ImagePipeline:
 
         try:
             sized = "tile_sample_min_height" in signature(enable).parameters
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
         # Several families take no sizes, and handing them one raises.
