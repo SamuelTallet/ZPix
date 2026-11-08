@@ -45,8 +45,9 @@ Once automatic setup is done:
 
 ZPix sets up the Python environment and packages for you.
 
-### Nine models
+### Ten models
 
+- SDXL Base 1.0
 - FLUX.1 [dev]
 - Z-Image Turbo
 - FLUX.2 [klein] 4B
@@ -119,6 +120,7 @@ Please get to [FAQ page](https://github.com/SamuelTallet/ZPix/blob/main/docs/FAQ
 ## Credits
 
 Base models:
+- [SDXL-Base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) by Stability AI
 - [FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev) by Black Forest Labs
 - [Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) by Tongyi-MAI
 - [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) by Black Forest Labs

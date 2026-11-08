@@ -12,7 +12,7 @@ Things you can do:
 
 Yes, using LoRA models:
 
-1. Download a LoRA model from [CivitAI](https://civitai.com/models) for example, or create your own. Ensure this LoRA is based on an image model available in ZPix, for example: `Flux.1 D`, `ZImageBase`, `ZImageTurbo`, `Flux.2 Klein 4B`, `Anima`, `Krea 2` or `Qwen 2.1`.
+1. Download a LoRA model from [CivitAI](https://civitai.com/models) for example, or create your own. Ensure this LoRA is based on an image model available in ZPix, for example: `SDXL 1.0`, `Flux.1 D`, `ZImageBase`, `ZImageTurbo`, `Flux.2 Klein 4B`, `Anima`, `Krea 2` or `Qwen 2.1`.
 2. Back to ZPix, click on LoRA button in sidebar.
 3. Select LoRA file (extension is *.safetensors*).
 4. Generate a new image.
@@ -40,6 +40,7 @@ If they were generated during the current session, to the *Discarded* subfolder 
 
 It depends on model used to generate image:
 
+- `SDXL Base 1.0` allows commercial use. See [CreativeML Open RAIL++-M License](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md).
 - `FLUX.1 [dev]` prohibit commercial use. See [FLUX.1 [dev] Non-Commercial License](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/LICENSE.md).
 - `Z-Image Turbo` and `FLUX.2 [klein] 4B` allow commercial use. See [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 - `Anima 1.0 Turbo 0.2` and `Anima Base 1.0` prohibit commercial use. See [CircleStone Labs Non-Commercial License](https://huggingface.co/circlestone-labs/Anima/blob/main/LICENSE.md) and [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/).

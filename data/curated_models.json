@@ -1,5 +1,15 @@
 [
     {
+        "id": "SamuelTallet/SDXL-Base-v1.0-SDNQ-8bit-dynamic-hadamard256",
+        "backup_id": null,
+        "name": "SDXL Base 1.0",
+        "family": "SDXL",
+        "default": {
+            "steps": 25,
+            "cfg": 7.5
+        }
+    },
+    {
         "id": "Disty0/FLUX.1-dev-SDNQ-uint4-svd-r32",
         "backup_id": null,
         "name": "FLUX.1 [dev]",
