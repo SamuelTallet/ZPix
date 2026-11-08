@@ -9,17 +9,17 @@ ZPix aims to be simple yet powerful. See [all features](#features).
 ## Quick start
 
 Windows:
-1. Download and extract [ZPix_1.1.1_Windows.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.1.1/ZPix_1.1.1_Windows.zip)
+1. Download and extract [ZPix_1.1.2_Windows.zip](https://github.com/SamuelTallet/ZPix/releases/download/v1.1.2/ZPix_1.1.2_Windows.zip)
 2. Run `ZPix.exe`
     - If SmartScreen pops, click on "More info", "Run anyway"
     - If a DLL is missing, install [Visual C++ Redist](https://aka.ms/vc14/vc_redist.x64.exe) and re-run
 
 Debian/Ubuntu:
-1. Download and install [zpix_1.1.1-1_all.deb](https://github.com/SamuelTallet/ZPix/releases/download/v1.1.1/zpix_1.1.1-1_all.deb)
+1. Download and install [zpix_1.1.2-1_all.deb](https://github.com/SamuelTallet/ZPix/releases/download/v1.1.2/zpix_1.1.2-1_all.deb)
 2. Run ZPix from app launcher
 
 macOS:
-1. Download and open [ZPix_1.1.1_AppleSilicon.dmg](https://github.com/SamuelTallet/ZPix/releases/download/v1.1.1/ZPix_1.1.1_AppleSilicon.dmg)
+1. Download and open [ZPix_1.1.2_AppleSilicon.dmg](https://github.com/SamuelTallet/ZPix/releases/download/v1.1.2/ZPix_1.1.2_AppleSilicon.dmg)
 2. Drag ZPix to Applications
 3. Run ZPix from Applications
     - If the app doesn't launch, go to system "Settings" > "Privacy & Security", click on "Open Anyway"
