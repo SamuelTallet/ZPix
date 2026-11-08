@@ -45,7 +45,7 @@ Once automatic setup is done:
 
 ZPix sets up the Python environment and packages for you.
 
-### Twelve models
+### Thirteen models
 
 - SDXL Base 1.0
 - FLUX.1 [dev]
@@ -59,6 +59,7 @@ ZPix sets up the Python environment and packages for you.
 - Qwen-Image 2.1 Turbo
 - Pruna Qwen-Image 2.1
 - Qwen-Image 2.1
+- MOSS-Image SFT Turbo
 
 ### Lazy download
 
@@ -132,9 +133,11 @@ Base models:
 - [Krea-2-Turbo](https://huggingface.co/krea/Krea-2-Turbo) by Krea
 - [Qwen-Image-2.1-Turbo](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo) by Alibaba
 - [Qwen-Image-2.1](https://huggingface.co/Qwen/Qwen-Image-2.1) by Alibaba
+- [MOSS-Image-SFT](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) by OpenMOSS
 
 Adapters:
 - [Pruna-Qwen-Image-2.1](https://huggingface.co/PrunaAI/Pruna-Qwen-Image-2.1) by Pruna AI
+- [MOSS-Image-Turbo](https://huggingface.co/Coffmeteor/MOSS-Image-Turbo) by Coffmeteor
 
 Quantized models:
 - [FLUX.1-dev-SDNQ-uint4-svd-r32](https://huggingface.co/Disty0/FLUX.1-dev-SDNQ-uint4-svd-r32) by Disty0

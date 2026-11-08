@@ -128,5 +128,15 @@
             "steps": 40,
             "cfg": 0.0
         }
+    },
+    {
+        "id": "SamuelTallet/MOSS-Image-SFT-Turbo-16steps-SDNQ-8bit-hadamard256",
+        "backup_id": null,
+        "name": "MOSS-Image SFT Turbo",
+        "family": "MOSS-Image",
+        "default": {
+            "steps": 16,
+            "cfg": 1.0
+        }
     }
 ]
