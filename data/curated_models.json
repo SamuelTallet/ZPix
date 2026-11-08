@@ -20,6 +20,16 @@
         }
     },
     {
+        "id": "SamuelTallet/FLUX.1-Fill-dev-SDNQ-4bit-dynamic-hadamard256",
+        "backup_id": null,
+        "name": "FLUX.1 Fill [dev]",
+        "family": "FLUX",
+        "default": {
+            "steps": 50,
+            "cfg": 30
+        }
+    },
+    {
         "id": "Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32",
         "backup_id": "SamuelTallet/Z-Image-Turbo-SDNQ-uint4-svd-r32",
         "name": "Z-Image Turbo",

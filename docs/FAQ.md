@@ -4,7 +4,7 @@
 
 Things you can do:
 
-- Use a `FLUX.2 [klein]` or `Qwen-Image 2.1` model, as they usually inpaint better.
+- Use a `FLUX.2 [klein]` model, `FLUX.1 Fill [dev]` or a `Qwen-Image 2.1` model, as they usually inpaint better.
 - Slightly adjust the selection; for example, enlarge it to include more context.
 - Generate an image with a different seed.
 
@@ -41,7 +41,7 @@ If they were generated during the current session, to the *Discarded* subfolder 
 It depends on model used to generate image:
 
 - `SDXL Base 1.0` allows commercial use. See [CreativeML Open RAIL++-M License](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md).
-- `FLUX.1 [dev]` prohibit commercial use. See [FLUX.1 [dev] Non-Commercial License](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/LICENSE.md).
+- `FLUX.1 [dev]` and `FLUX.1 Fill [dev]` prohibit commercial use. See [FLUX.1 [dev] Non-Commercial License](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/LICENSE.md).
 - `Z-Image Turbo` and `FLUX.2 [klein] 4B` allow commercial use. See [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 - `Anima 1.0 Turbo 0.2` and `Anima Base 1.0` prohibit commercial use. See [CircleStone Labs Non-Commercial License](https://huggingface.co/circlestone-labs/Anima/blob/main/LICENSE.md) and [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/).
 - `Krea 2 Turbo` requires a commercial licence once your revenue reaches a certain amount. See [Krea 2 Community License](https://www.krea.ai/krea-2-licensing).
