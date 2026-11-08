@@ -1,6 +1,13 @@
 """ZPix Gradio app."""
 
 # Based on https://huggingface.co/spaces/Tongyi-MAI/Z-Image-Turbo
+from source.py.models_dir import configure_hf_cache
+
+# Point the Hugging Face cache at the models directory set by user, if any.
+# This must run before anything imports huggingface_hub, which resolves its
+# cache location from the environment at import time (issue #25).
+configure_hf_cache()
+
 from argparse import ArgumentParser
 from functools import partial
 from os import environ
@@ -44,6 +51,7 @@ from source.py.lora_models import (
     validate_lora_swap,
 )
 from source.py.os_abstract import get_key_name, open_with_default_app
+from source.py.models_dir import change_models_dir
 from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
 from source.py.ref_images import (
@@ -219,6 +227,21 @@ if __name__ == "__main__":
                 )
                 change_out_folder_btn.click(
                     lambda: change_output_dir(t),
+                )
+
+                change_models_dir_btn = gr.Button(
+                    "",
+                    icon=assets_dir / "freepik" / "folder.svg",
+                    elem_id="change-models-folder-btn",
+                )
+                gr.HTML(
+                    js_on_load=f"""
+                        const btn = document.getElementById("change-models-folder-btn")
+                        btn.title = "{t("Change models folder")}"
+                    """
+                )
+                change_models_dir_btn.click(
+                    lambda: change_models_dir(t),
                 )
 
                 access_faq_btn = gr.Button(
