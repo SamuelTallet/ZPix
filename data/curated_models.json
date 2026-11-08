@@ -110,16 +110,6 @@
         }
     },
     {
-        "id": "SamuelTallet/Pruna-Qwen-Image-2.1-8steps-SDNQ-4bit-dynamic-hadamard256",
-        "backup_id": null,
-        "name": "Pruna Qwen-Image 2.1",
-        "family": "Qwen-Image 2.1",
-        "default": {
-            "steps": 8,
-            "cfg": 0.0
-        }
-    },
-    {
         "id": "SamuelTallet/Qwen-Image-2.1-SDNQ-4bit-dynamic-hadamard256",
         "backup_id": null,
         "name": "Qwen-Image 2.1",

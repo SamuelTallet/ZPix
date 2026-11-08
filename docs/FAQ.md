@@ -46,7 +46,7 @@ It depends on model used to generate image:
 - `FLUX.2 [klein] 9B` prohibits commercial use. See [FLUX Non-Commercial License](https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/blob/main/LICENSE.md).
 - `Anima 1.0 Turbo 0.2` and `Anima Base 1.0` prohibit commercial use. See [CircleStone Labs Non-Commercial License](https://huggingface.co/circlestone-labs/Anima/blob/main/LICENSE.md) and [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/).
 - `Krea 2 Turbo` requires a commercial licence once your revenue reaches a certain amount. See [Krea 2 Community License](https://www.krea.ai/krea-2-licensing).
-- `Pruna Qwen-Image 2.1` and `Qwen-Image 2.1` may apply some commercial restrictions. See [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE).
+- `Qwen-Image 2.1` may apply some commercial restrictions. See [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE).
 
 ## Does this application works offline?
 
