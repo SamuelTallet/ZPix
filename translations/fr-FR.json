@@ -79,5 +79,15 @@
     "Please try again shortly, an image is being generated.": "Veuillez réessayer dans un instant, une image est en cours de génération.",
     "Please try again, a LoRA was loading.": "Veuillez réessayer, un LoRA était en cours de chargement.",
     "Please wait, a model is being downloaded.": "Veuillez patienter, un modèle est en cours de téléchargement.",
-    "Please wait, a model is being loaded.": "Veuillez patienter, un modèle est en cours de chargement."
+    "Please wait, a model is being loaded.": "Veuillez patienter, un modèle est en cours de chargement.",
+    "Clean files downloaded by ZPix (models and other caches)": "Effacez les fichiers téléchargés par ZPix (modèles et autres caches)",
+    "Select files to clean": "Sélectionnez les fichiers à effacer",
+    "Clean": "Effacer",
+    "Cancel": "Annuler",
+    "Nothing to clean.": "Rien à nettoyer.",
+    "Cleaning started.": "Nettoyage commencé.",
+    "Cleaning done.": "Nettoyage terminé.",
+    "Models downloaded by ZPix, except the loaded one": "Modèles téléchargés par ZPix, sauf celui chargé",
+    "Shapes compiled by PyTorch and Triton": "Formes compilées par PyTorch et Triton",
+    "Please wait, a cleaning is in progress.": "Veuillez patienter, un nettoyage est en cours."
 }

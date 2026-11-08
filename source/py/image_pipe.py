@@ -303,6 +303,10 @@ class ImagePipeline:
         self.instance: ModularPipeline | DiffusionPipeline | None = None
         """Loaded pipeline, `None` during a swap."""
 
+        self.repo_id: str | None = None
+        """Hugging Face repo the loaded pipeline comes from: model ID, or backup ID
+        on fallback."""
+
         self.inpaint_instance: ModularPipeline | DiffusionPipeline | None = None
         """Pipeline taking a mask, `None` during a swap or without one. Shares the
         components of `instance`: one replaced there has to be replaced here too."""
@@ -439,12 +443,14 @@ class ImagePipeline:
 
         try:
             self.instance = create_pipe(model.id)
+            self.repo_id = model.id
         except Exception:
             if model.backup_id:
                 logger.warning(
                     f"Can't load {model.id}, falling back to {model.backup_id}."
                 )
                 self.instance = create_pipe(model.backup_id)
+                self.repo_id = model.backup_id
             else:
                 raise
 

@@ -1,0 +1,39 @@
+{
+  "name": "gradio_cleaning",
+  "version": "1.0.0",
+  "description": "Gradio modal letting user select items to clean",
+  "type": "module",
+  "author": "",
+  "license": "GPL-3.0-or-later",
+  "private": false,
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "exports": {
+    ".": {
+      "gradio": "./Index.svelte",
+      "svelte": "./dist/Index.svelte",
+      "types": "./dist/Index.svelte.d.ts"
+    },
+    "./example": {
+      "gradio": "./Example.svelte",
+      "svelte": "./dist/Example.svelte",
+      "types": "./dist/Example.svelte.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@gradio/button": "0.8.1",
+    "@gradio/checkbox": "0.8.1",
+    "@gradio/utils": "0.13.0",
+    "svelte": "5.48.0"
+  },
+  "devDependencies": {
+    "@gradio/preview": "0.16.2",
+    "svelte-check": "4.7.8",
+    "typescript": "6.0.3"
+  },
+  "peerDependencies": {
+    "svelte": "5.48.0"
+  }
+}

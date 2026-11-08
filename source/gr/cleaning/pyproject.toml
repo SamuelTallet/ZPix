@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gradio_cleaning"
+version = "1.0.0"
+description = "Gradio modal letting user select items to clean"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.14"
+# Required by Gradio to detect a custom component.
+keywords = ["gradio-custom-component"]
+dependencies = ["gradio>=6.0,<7.0"]
+
+[tool.hatch.build]
+artifacts = ["/backend/gradio_cleaning/templates", "*.pyi"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["/backend/gradio_cleaning"]
+
+[tool.ruff]
+extend-exclude = ["*.pyi"]
+
+[tool.ty.src]
+exclude = ["*.pyi"]

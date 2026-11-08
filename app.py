@@ -10,6 +10,7 @@ from shutil import rmtree
 import gradio as gr
 import torch
 from gradio_canvas import Canvas
+from gradio_cleaning import Cleaning
 from gradio_select_tools import (
     EllipseSelectTool,
     FreehandLassoTool,
@@ -30,6 +31,12 @@ from source.py.custom_errors import BusyPortError
 from source.py.custom_theme import get_theme
 from source.py.disclaimer import TermsOfUse
 from source.py.ex_prompts import get_example_prompts
+from source.py.files_cleaning import (
+    clean_selected,
+    measure_cleanables,
+    open_cleaning_modal,
+    validate_cleaning,
+)
 from source.py.high_res_fix import HIGH_RES_FIX_FACTORS
 from source.py.image_discard import discard_image
 from source.py.image_gen import generate
@@ -43,7 +50,11 @@ from source.py.lora_models import (
     unload_lora,
     validate_lora_swap,
 )
-from source.py.os_abstract import get_key_name, open_with_default_app
+from source.py.os_abstract import (
+    get_key_name,
+    get_size_base,
+    open_with_default_app,
+)
 from source.py.output_dir import change_output_dir, get_output_dir
 from source.py.prompt_extract import extract_update_prompt
 from source.py.ref_images import (
@@ -162,6 +173,16 @@ if __name__ == "__main__":
 
         tou = TermsOfUse(get_user_preferences_dir() / "tou_accepted")
 
+        curated_models_list = app_dir / "data" / "complete" / "curated_models.list"
+        """All models ZPix has curated since its beginning."""
+
+        cleaning = Cleaning(
+            title=t("Select files to clean"),
+            clean_label=t("Clean"),
+            cancel_label=t("Cancel"),
+            size_base=get_size_base(),
+        )
+
         with gr.Row(elem_classes=[] if tou.accepted() else ["blurred"]) as ui_row:
             with gr.Column(min_width=48, elem_classes=["sidebar"]):
                 swap_lora_btn = gr.Button(
@@ -220,6 +241,43 @@ if __name__ == "__main__":
                 change_out_folder_btn.click(
                     lambda: change_output_dir(t),
                 )
+
+                clean_btn = gr.Button(
+                    "",
+                    icon=assets_dir / "smashicons" / "broom_2954888.svg",
+                    elem_id="clean-btn",
+                )
+                gr.HTML(
+                    js_on_load=f"""
+                        const btn = document.getElementById("clean-btn")
+                        btn.title = "{t("Clean files downloaded by ZPix (models and other caches)")}"
+                    """
+                )
+
+                # On cleaning button click: validate cleaning, show modal, then
+                # measure sizes.
+                clean_btn.click(validate_cleaning).success(
+                    lambda: open_cleaning_modal(curated_models_list, image_pipe, t),
+                    outputs=cleaning,
+                ).then(
+                    lambda: measure_cleanables(curated_models_list, image_pipe, t),
+                    outputs=cleaning,
+                )
+
+                # On "Clean" click: hide modal, validate cleaning again, as another
+                # browser tab may have started a blocking task, then clean
+                # selected files.
+                cleaning.clean(
+                    lambda: gr.update(visible=False),
+                    outputs=cleaning,
+                ).then(validate_cleaning).success(
+                    lambda v: clean_selected(v, curated_models_list, image_pipe, t),
+                    inputs=cleaning,
+                ).success(
+                    lambda: gr.Info(t("Cleaning done."), duration=2),
+                )
+
+                cleaning.close(lambda: gr.update(visible=False), outputs=cleaning)
 
                 access_faq_btn = gr.Button(
                     "",
