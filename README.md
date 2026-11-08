@@ -45,13 +45,14 @@ Once automatic setup is done:
 
 ZPix sets up the Python environment and packages for you.
 
-### Eleven models
+### Twelve models
 
 - SDXL Base 1.0
 - FLUX.1 [dev]
 - FLUX.1 Fill [dev]
 - Z-Image Turbo
 - FLUX.2 [klein] 4B
+- FLUX.2 [klein] 9B
 - Anima Turbo
 - Anima Base
 - Krea 2 Turbo
@@ -126,6 +127,7 @@ Base models:
 - [FLUX.1-Fill-dev](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) by Black Forest Labs
 - [Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) by Tongyi-MAI
 - [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) by Black Forest Labs
+- [FLUX.2-klein-9B](https://huggingface.co/black-forest-labs/FLUX.2-klein-9B) by Black Forest Labs
 - [Anima](https://huggingface.co/circlestone-labs/Anima) by CircleStone Labs, built on [NVIDIA Cosmos](https://github.com/nvidia-cosmos)
 - [Krea-2-Turbo](https://huggingface.co/krea/Krea-2-Turbo) by Krea
 - [Qwen-Image-2.1-Turbo](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo) by Alibaba
@@ -138,6 +140,7 @@ Quantized models:
 - [FLUX.1-dev-SDNQ-uint4-svd-r32](https://huggingface.co/Disty0/FLUX.1-dev-SDNQ-uint4-svd-r32) by Disty0
 - [Z-Image-Turbo-SDNQ-uint4-svd-r32](https://huggingface.co/Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32) by Disty0
 - [FLUX.2-klein-4B-SDNQ-4bit-dynamic](https://huggingface.co/Disty0/FLUX.2-klein-4B-SDNQ-4bit-dynamic) by Disty0
+- [FLUX.2-klein-9B-SDNQ-4bit-dynamic-svd-r32](https://huggingface.co/Disty0/FLUX.2-klein-9B-SDNQ-4bit-dynamic-svd-r32) by Disty0
 - [Anima-base-v1.0_sdnq_dynamic_8bit](https://huggingface.co/OzzyGT/Anima-base-v1.0_sdnq_dynamic_8bit) by OzzyGT
 
 Python packages:
